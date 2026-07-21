@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: 'Inter', sans-serif;
+  --font-manrope: 'Manrope', sans-serif;
+
+  /* Brand palette */
+  --brand-black:   #0f0700;   /* headings / max contrast */
+  --brand-dark:    #1c0e00;   /* primary body text */
+  --brand-mid:     #4a2800;   /* secondary body / descriptions */
+  --brand-muted:   #7c4a1e;   /* captions / labels */
+  --brand-light:   #b86c2c;   /* subtle accents */
+
+  --orange-700: #c2410c;
+  --orange-600: #ea580c;
+  --orange-500: #f97316;
+  --orange-400: #fb923c;
+  --orange-300: #fdba74;
+
+  --red-500:   #EE4047;
+  --amber-500: #FF9F0A;
+  --green-500: #27C15A;
+}
+
+body {
+  font-family: var(--font-inter);
+  background-color: #fffbf5;
+  color: var(--brand-dark);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ── Glassmorphism ─────────────────────────────── */
+.glass-container {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(234, 88, 12, 0.10);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.70);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(234, 88, 12, 0.12);
+  box-shadow: 0 10px 30px rgba(15, 7, 0, 0.06), 0 2px 8px rgba(15, 7, 0, 0.03);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(234, 88, 12, 0.22);
+  box-shadow: 0 20px 50px rgba(15, 7, 0, 0.10);
+}
+
+.glass-input {
+  background: #ffffff;
+  border: 1.5px solid rgba(234, 88, 12, 0.20);
+  color: var(--brand-dark);
+  transition: all 0.2s ease-in-out;
+}
+
+.glass-input::placeholder {
+  color: #b0917a;
+}
+
+.glass-input:focus {
+  border-color: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15);
+  outline: none;
+}
+
+/* ── Gradients ─────────────────────────────────── */
+.hero-gradient {
+  background:
+    radial-gradient(circle at 10% 20%, rgba(249, 115, 22, 0.07), transparent 35%),
+    radial-gradient(circle at 88% 8%,  rgba(194, 65, 12, 0.06), transparent 30%),
+    radial-gradient(circle at 60% 70%, rgba(251, 146, 60, 0.05), transparent 40%),
+    linear-gradient(160deg, #ffffff 0%, #fffbf5 55%, #fff3e0 100%);
+}
+
+.button-gradient {
+  background: linear-gradient(135deg, #c2410c 0%, #f97316 100%);
+}
+
+/* ── Text Gradients ────────────────────────────── */
+.text-gradient {
+  background: linear-gradient(130deg, #0f0700 0%, #c2410c 55%, #f97316 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-orange {
+  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Scrollbar ─────────────────────────────────── */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track  { background: #fff8f0; }
+::-webkit-scrollbar-thumb  { background: #fdba74; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #f97316; }
+
+/* ── Typography scale ──────────────────────────── */
+.font-heading {
+  font-family: var(--font-manrope);
+}
+
+.display-xl {
+  font-family: var(--font-manrope);
+  font-size: clamp(2.5rem, 5vw, 4.25rem);
+  line-height: 1.05;
+  font-weight: 900;
+  color: var(--brand-black);
+  letter-spacing: -0.02em;
+}
+
+.display-lg {
+  font-family: var(--font-manrope);
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.08;
+  font-weight: 800;
+  color: var(--brand-black);
+  letter-spacing: -0.015em;
+}
+
+.display-md {
+  font-family: var(--font-manrope);
+  font-size: clamp(1.75rem, 3.5vw, 2.875rem);
+  line-height: 1.12;
+  font-weight: 750;
+  color: var(--brand-black);
+  letter-spacing: -0.01em;
+}
+
+/* ── Utility overrides for body copy ───────────── */
+/* Make Tailwind gray text warm & readable on cream */
+.text-gray-400 { color: #9a7a5e !important; }
+.text-gray-500 { color: #7c5c42 !important; }
+.text-gray-600 { color: #5c3d22 !important; }
+.text-gray-700 { color: #3d2200 !important; }
