@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import GlassCard from "../../../components/ui/GlassCard";
 import Button from "../../../components/ui/Button";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
 
 // ==========================================
 // TYPE DEFINITIONS
@@ -255,7 +257,7 @@ export default function AdminDashboard() {
       ];
       
       const responses = await Promise.all(
-        types.map(t => fetch(`http://localhost:5000/api/v1/crm/${t}`).then(res => {
+        types.map(t => fetch(`${API_URL}/crm/${t}`).then(res => {
           if (!res.ok) throw new Error("Database Sync Failed");
           return res.json();
         }))
@@ -371,7 +373,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/client", {
+      const res = await fetch(`${API_URL}/crm/client`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newClient)
@@ -394,7 +396,7 @@ export default function AdminDashboard() {
     const newStatus = client.status === "Active" ? "Inactive" : "Active";
 
     try {
-      const res = await fetch(`http://localhost:5000/api/v1/crm/client/${id}`, {
+      const res = await fetch(`${API_URL}/crm/client/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
@@ -435,7 +437,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/call", {
+      const res = await fetch(`${API_URL}/crm/call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newCall)
@@ -454,7 +456,7 @@ export default function AdminDashboard() {
 
   const handleDeleteCall = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/v1/crm/call/${id}`, {
+      const res = await fetch(`${API_URL}/crm/call/${id}`, {
         method: "DELETE"
       }).then(r => r.json());
 
@@ -488,7 +490,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/lead", {
+      const res = await fetch(`${API_URL}/crm/lead`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newLead)
@@ -539,19 +541,19 @@ export default function AdminDashboard() {
     };
 
     try {
-      const resClient = await fetch("http://localhost:5000/api/v1/crm/client", {
+      const resClient = await fetch(`${API_URL}/crm/client`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newClient)
       }).then(r => r.json());
 
-      const resProj = await fetch("http://localhost:5000/api/v1/crm/project", {
+      const resProj = await fetch(`${API_URL}/crm/project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProject)
       }).then(r => r.json());
 
-      const resLead = await fetch(`http://localhost:5000/api/v1/crm/lead/${lead.id}`, {
+      const resLead = await fetch(`${API_URL}/crm/lead/${lead.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "Won" })
@@ -586,7 +588,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/project", {
+      const res = await fetch(`${API_URL}/crm/project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProj)
@@ -605,10 +607,10 @@ export default function AdminDashboard() {
 
   const handleUpdateProjectStatus = async (id: string, status: any) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/v1/crm/project/${id}`, {
+      const res = await fetch(`${API_URL}/crm/project/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status: status })
       }).then(r => r.json());
 
       if (res.success) {
@@ -650,7 +652,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/quotation", {
+      const res = await fetch(`${API_URL}/crm/quotation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newQuote)
@@ -669,7 +671,7 @@ export default function AdminDashboard() {
 
   const handleApproveQuotation = async (number: string) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/v1/crm/quotation/${number}`, {
+      const res = await fetch(`${API_URL}/crm/quotation/${number}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "Approved" })
@@ -708,7 +710,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/feature", {
+      const res = await fetch(`${API_URL}/crm/feature`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newFeat)
@@ -749,7 +751,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/v1/crm/innovation", {
+      const res = await fetch(`${API_URL}/crm/innovation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newInn)
@@ -785,7 +787,7 @@ export default function AdminDashboard() {
         <GlassCard className="p-10 flex flex-col items-center gap-4 bg-white/70 shadow-elevated border border-red-500/10 text-center max-w-sm">
           <ShieldAlert className="w-10 h-10 text-red-500" />
           <span className="font-heading font-extrabold text-[#1a0f00] text-sm tracking-wide">Database Sync Failed</span>
-          <p className="text-xs text-gray-500 leading-relaxed">Could not establish connection to the Node.js API server on port 5000. Please ensure the backend is active and running.</p>
+          <p className="text-xs text-gray-500 leading-relaxed">Could not establish connection to the Node.js API server ({API_URL}). Please ensure the backend is active and running.</p>
           <Button onClick={() => loadDatabase()} variant="primary" className="mt-2 w-full text-xs font-semibold">
             Retry Connection
           </Button>
