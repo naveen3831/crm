@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   FileText, 
   CreditCard, 
@@ -8,24 +8,35 @@ import {
   DollarSign, 
   AlertCircle, 
   LogOut, 
-  Check 
+  Check,
+  Plus,
+  Loader2
 } from "lucide-react";
 import GlassCard from "../../../components/ui/GlassCard";
 import Button from "../../../components/ui/Button";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
 interface Quote {
   id: string;
-  title: string;
-  value: number;
-  status: "pending" | "accepted" | "rejected";
+  number?: string;
+  title?: string;
+  clientName?: string;
+  items?: string;
+  value?: number;
+  total?: number;
+  status: "pending" | "accepted" | "rejected" | "Approved" | "Pending Approval";
 }
 
 interface Invoice {
   id: string;
-  title: string;
-  value: number;
-  due: string;
-  status: "paid" | "pending";
+  title?: string;
+  clientName?: string;
+  value?: number;
+  amount?: number;
+  due?: string;
+  dueDate?: string;
+  status: "paid" | "pending" | "Paid" | "Unpaid";
 }
 
 interface Ticket {
@@ -37,30 +48,13 @@ interface Ticket {
 
 export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
-
-  // Sidebar links definition
-  const sidebarLinks = [
-    { name: "My Dashboard", id: "overview", icon: <FileText size={18} /> },
-    { name: "My Quotations", id: "quotations", icon: <FileText size={18} /> },
-    { name: "Invoices & Payments", id: "billing", icon: <CreditCard size={18} /> },
-    { name: "Support Ticket Desk", id: "support", icon: <TicketCheck size={18} /> },
-  ];
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // States
-  const [quotes, setQuotes] = useState<Quote[]>([
-    { id: "Q-9082", title: "Enterprise Database Migration & Setup", value: 4500.0, status: "pending" },
-    { id: "Q-9041", title: "Monthly Managed IT Support Retainer", value: 1200.0, status: "accepted" },
-  ]);
-
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    { id: "INV-1024", title: "Setup Fee & Initial Migration Setup", value: 4500, due: "July 30, 2026", status: "pending" },
-    { id: "INV-0982", title: "Consulting Retainer - June 2026", value: 1200, due: "June 30, 2026", status: "paid" },
-  ]);
-
-  const [tickets, setTickets] = useState<Ticket[]>([
-    { id: "#1040", subject: "Invoice Dispute", date: "June 24, 2026", status: "resolved" },
-    { id: "#0921", subject: "Portal Access Restrict", date: "May 12, 2026", status: "closed" },
-  ]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [ticketSubject, setTicketSubject] = useState("");
   const [ticketBody, setTicketBody] = useState("");
@@ -72,13 +66,75 @@ export default function CustomerDashboard() {
   const [isPaying, setIsPaying] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
-  // Handlers
-  const handleAcceptQuote = (quoteId: string) => {
-    setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: "accepted" } : q));
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (!savedUser) {
+      window.location.href = "/auth/login";
+      return;
+    }
+    try {
+      const parsed = JSON.parse(savedUser);
+      if (parsed.role === "admin") {
+        window.location.href = "/admin/dashboard";
+        return;
+      }
+      setCurrentUser(parsed);
+    } catch {
+      window.location.href = "/auth/login";
+      return;
+    }
+    loadCustomerData();
+  }, []);
+
+  // Fetch real-time DB data
+  const loadCustomerData = async () => {
+    try {
+      setIsLoading(true);
+      const [resQ, resInv, resT] = await Promise.all([
+        fetch(`${API_URL}/crm/quotation`).then((r) => r.json()),
+        fetch(`${API_URL}/crm/invoice`).then((r) => r.json()),
+        fetch(`${API_URL}/crm/ticket`).then((r) => r.json()),
+      ]);
+
+      if (resQ.success) setQuotes(resQ.data || []);
+      if (resInv.success) setInvoices(resInv.data || []);
+      if (resT.success) setTickets(resT.data || []);
+    } catch (err) {
+      console.error("[Customer DB Load Error]", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleRejectQuote = (quoteId: string) => {
-    setQuotes(prev => prev.map(q => q.id === quoteId ? { ...q, status: "rejected" } : q));
+  // Sidebar links definition
+  const sidebarLinks = [
+    { name: "My Dashboard", id: "overview", icon: <FileText size={18} /> },
+    { name: "My Quotations", id: "quotations", icon: <FileText size={18} /> },
+    { name: "Invoices & Payments", id: "billing", icon: <CreditCard size={18} /> },
+    { name: "Support Ticket Desk", id: "support", icon: <TicketCheck size={18} /> },
+  ];
+
+  // Handlers for Quote Actions
+  const handleAcceptQuote = async (quoteId: string) => {
+    try {
+      await fetch(`${API_URL}/crm/quotation/${quoteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      });
+      setQuotes((prev) => prev.map((q) => (q.id === quoteId || q.number === quoteId ? { ...q, status: "accepted" } : q)));
+    } catch {}
+  };
+
+  const handleRejectQuote = async (quoteId: string) => {
+    try {
+      await fetch(`${API_URL}/crm/quotation/${quoteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "rejected" }),
+      });
+      setQuotes((prev) => prev.map((q) => (q.id === quoteId || q.number === quoteId ? { ...q, status: "rejected" } : q)));
+    } catch {}
   };
 
   const triggerPayment = (invoice: Invoice) => {
@@ -90,38 +146,86 @@ export default function CustomerDashboard() {
   const executeMockPayment = async () => {
     if (!payingInvoice) return;
     setIsPaying(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsPaying(false);
-    setPaymentSuccess(true);
-    
-    // Update local invoice state
-    setInvoices(prev => prev.map(inv => inv.id === payingInvoice.id ? { ...inv, status: "paid" } : inv));
-    
-    setTimeout(() => {
-      setShowPayModal(false);
-      setPayingInvoice(null);
-    }, 2000);
+    try {
+      const invId = payingInvoice.id;
+      await fetch(`${API_URL}/crm/invoice/${invId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paid" }),
+      });
+
+      await fetch(`${API_URL}/crm/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: currentUser?.name || payingInvoice.clientName || "Customer",
+          amount: payingInvoice.value || payingInvoice.amount || 0,
+          gateway: "Stripe",
+          date: new Date().toISOString().split("T")[0],
+        }),
+      });
+
+      setIsPaying(false);
+      setPaymentSuccess(true);
+      
+      setInvoices((prev) => prev.map((inv) => (inv.id === invId ? { ...inv, status: "paid" } : inv)));
+      
+      setTimeout(() => {
+        setShowPayModal(false);
+        setPayingInvoice(null);
+      }, 1500);
+    } catch {
+      setIsPaying(false);
+    }
   };
 
-  const handleRaiseTicket = (e: React.FormEvent) => {
+  const handleRaiseTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketSubject.trim() || !ticketBody.trim()) return;
 
-    const newTicket: Ticket = {
-      id: `#${Math.floor(1000 + Math.random() * 9000)}`,
+    const newCustomId = `#TKT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const ticketPayload = {
+      id: newCustomId,
       subject: ticketSubject,
+      message: ticketBody,
       date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
       status: "open",
+      userEmail: currentUser?.email || "customer@crm.com",
+      userName: currentUser?.name || "Customer Account",
     };
 
-    setTickets(prev => [newTicket, ...prev]);
-    setTicketSuccess(true);
-    setTicketSubject("");
-    setTicketBody("");
+    try {
+      // Save ticket into CRM collection so Admin can view it
+      await fetch(`${API_URL}/crm/ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ticketPayload),
+      });
 
-    setTimeout(() => {
-      setTicketSuccess(false);
-    }, 4000);
+      // Also submit to enquiries endpoint
+      await fetch(`${API_URL}/enquiries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: currentUser?.name || "Customer Account",
+          email: currentUser?.email || "customer@crm.com",
+          subject: ticketSubject,
+          message: ticketBody,
+          consent: true,
+        }),
+      });
+
+      setTickets((prev) => [ticketPayload, ...prev]);
+      setTicketSuccess(true);
+      setTicketSubject("");
+      setTicketBody("");
+
+      setTimeout(() => {
+        setTicketSuccess(false);
+      }, 4000);
+    } catch (err) {
+      console.error("[Create Ticket Error]", err);
+    }
   };
 
   const handleLogout = () => {
@@ -138,29 +242,35 @@ export default function CustomerDashboard() {
           <div className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-700/10 to-blue-500/5 border border-orange-500/10 flex items-center justify-center p-1 text-[#1a0f00]">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" className="w-full h-full text-[#1a0f00]">
-                <path d="M 40,95 C 40,55 160,55 160,95" stroke="#f97316" strokeWidth="8" strokeLinecap="round" />
+                <path d="M 40,95 C 40,55 160,55 160,95" stroke="#f97316" strokeWidth="7" strokeLinecap="round" />
                 <rect x="62" y="70" width="18" height="50" rx="3" fill="#EE4047" />
                 <rect x="86" y="50" width="18" height="70" rx="3" fill="#FF9F0A" />
                 <rect x="110" y="30" width="18" height="90" rx="3" fill="#27C15A" />
-                <ellipse cx="100" cy="100" rx="48" ry="29" stroke="currentColor" strokeWidth="10" transform="rotate(-15, 100, 100)" />
-                <path d="M 40,95 C 40,135 160,135 160,95" stroke="#f97316" strokeWidth="8" strokeLinecap="round" />
-                <path d="M 75,122 L 35,167" stroke="currentColor" strokeWidth="15" strokeLinecap="round" />
+                <ellipse cx="100" cy="100" rx="48" ry="29" stroke="#1a0f00" strokeWidth="10" transform="rotate(-15, 100, 100)" />
+                <path d="M 40,95 C 40,135 160,135 160,95" stroke="#f97316" strokeWidth="7" strokeLinecap="round" />
+                <path d="M 75,122 L 35,167" stroke="#1a0f00" strokeWidth="15" strokeLinecap="round" />
               </svg>
             </div>
-            <span className="font-heading font-extrabold text-base text-[#1a0f00] tracking-tight">
-              CRM Client
-            </span>
+            <div>
+              <span className="font-heading font-extrabold text-base text-[#1a0f00] tracking-tight block leading-none">
+                Client Portal
+              </span>
+              <span className="text-[10px] text-orange-600 font-medium font-sans">
+                {currentUser?.email || "customer@crm.com"}
+              </span>
+            </div>
           </div>
 
+          {/* Navigation Links */}
           <nav className="flex flex-col gap-1.5">
             {sidebarLinks.map((link) => (
               <button
                 key={link.id}
                 onClick={() => setActiveTab(link.id)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold font-heading transition-all ${
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                   activeTab === link.id
-                    ? "bg-orange-600 text-white shadow-md shadow-orange-500/15"
-                    : "text-gray-500 hover:text-[#1a0f00] hover:bg-gray-100"
+                    ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-md shadow-orange-500/20"
+                    : "text-gray-600 hover:text-[#1a0f00] hover:bg-orange-50/50"
                 }`}
               >
                 {link.icon}
@@ -170,308 +280,332 @@ export default function CustomerDashboard() {
           </nav>
         </div>
 
-        <div className="flex flex-col gap-4 mt-8 pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center text-white font-bold text-xs">
-              JD
-            </div>
-            <div>
-              <div className="text-xs font-bold text-[#1a0f00] leading-none">John Doe</div>
-              <div className="text-[10px] text-gray-500 mt-1">Acme Corporation</div>
-            </div>
+        {/* User Card & Logout */}
+        <div className="pt-6 border-t border-gray-100 flex flex-col gap-3">
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
+            <span>Status: <span className="text-green-600 font-bold">Active</span></span>
           </div>
-          <button 
+          <Button
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+            variant="outline"
+            className="w-full justify-center gap-2 py-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
           >
-            <LogOut size={16} />
-            <span>Log Out</span>
-          </button>
+            <LogOut size={14} /> Log Out
+          </Button>
         </div>
       </aside>
 
-      {/* 2. Content */}
-      <main className="flex-1 p-6 md:p-10 flex flex-col gap-8 overflow-y-auto">
-        <header className="border-b border-gray-200 pb-4">
-          <h1 className="font-heading font-extrabold text-2xl text-[#1a0f00]">Customer Space</h1>
-          <p className="text-xs text-gray-500 mt-1 font-sans">Profile Company: Acme Corp (GST Active)</p>
-        </header>
+      {/* 2. Main Content Viewport */}
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto max-w-6xl mx-auto w-full">
+        {isLoading && (
+          <div className="mb-4 flex items-center gap-2 text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 p-2.5 rounded-xl">
+            <Loader2 size={14} className="animate-spin" /> Syncing with MongoDB live database...
+          </div>
+        )}
 
-        {/* Tab 1: Overview */}
+        {/* TAB 1: OVERVIEW DASHBOARD */}
         {activeTab === "overview" && (
           <div className="flex flex-col gap-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col gap-1">
-                <FileText className="text-orange-600 mb-2" size={20} />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Active Quotations</span>
-                <span className="text-2xl font-extrabold text-[#1a0f00] font-heading">1</span>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col gap-1">
-                <CreditCard className="text-orange-500 mb-2" size={20} />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Unpaid Invoices</span>
-                <span className="text-2xl font-extrabold text-[#1a0f00] font-heading">1</span>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col gap-1">
-                <TicketCheck className="text-amber-500 mb-2" size={20} />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Open Support Tickets</span>
-                <span className="text-2xl font-extrabold text-[#1a0f00] font-heading">1</span>
-              </div>
-              <div className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col gap-1">
-                <DollarSign className="text-green-500 mb-2" size={20} />
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Paid</span>
-                <span className="text-2xl font-extrabold text-[#1a0f00] font-heading">$1,200</span>
-              </div>
+            <div>
+              <h1 className="text-2xl font-heading font-extrabold text-[#1a0f00]">Welcome Back, {currentUser?.name || "Client"}</h1>
+              <p className="text-sm text-gray-600 font-sans mt-1">Here is a quick summary of your live account activities and records.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <GlassCard className="p-6 bg-white/50 border border-gray-200">
-                <h3 className="font-heading font-bold text-base text-[#1a0f00] mb-4">Pending Bills Summary</h3>
-                <div className="flex flex-col gap-3">
-                  {invoices.map((inv) => (
-                    <div key={inv.id} className="flex items-center justify-between p-4 rounded-xl bg-white border border-gray-100 text-xs">
-                      <div>
-                        <div className="font-bold text-[#1a0f00]">{inv.title}</div>
-                        <span className="text-gray-400 text-[10px] mt-1 block">Due: {inv.due}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-extrabold text-[#1a0f00]">${inv.value}</span>
-                        {inv.status === "paid" ? (
-                          <span className="px-2 py-0.5 rounded bg-green-50 text-green-600 font-bold uppercase text-[9px]">Paid</span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded bg-pipeline-red-100 text-pipeline-red-550 font-semibold text-[10px]">Unpaid</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              <GlassCard className="p-5 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase">
+                  <span>Quotations</span>
+                  <FileText size={18} className="text-orange-500" />
                 </div>
+                <div className="text-2xl font-bold text-[#1a0f00]">{quotes.length}</div>
+                <div className="text-xs text-gray-600">Active quotations in MongoDB</div>
               </GlassCard>
 
-              <GlassCard className="p-6 bg-white/50 border border-gray-200 flex flex-col gap-4">
-                <h3 className="font-heading font-bold text-base text-[#1a0f00]">Active Notifications</h3>
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-orange-50 border border-orange-100 text-xs">
-                  <AlertCircle className="text-orange-600 shrink-0 mt-0.5" size={16} />
-                  <p className="text-gray-700 font-medium leading-relaxed">
-                    Admin Operator sent Quotation **Q-9082** for approval. Please accept to proceed with billing.
-                  </p>
+              <GlassCard className="p-5 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase">
+                  <span>Invoices</span>
+                  <CreditCard size={18} className="text-orange-500" />
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-green-50 border border-green-100 text-xs">
-                  <AlertCircle className="text-green-600 shrink-0 mt-0.5" size={16} />
-                  <p className="text-gray-700 font-medium leading-relaxed">
-                    Ticket **#1040** (Invoice dispute review) was resolved by support staff.
-                  </p>
+                <div className="text-2xl font-bold text-[#1a0f00]">{invoices.length}</div>
+                <div className="text-xs text-gray-600">Total invoices generated</div>
+              </GlassCard>
+
+              <GlassCard className="p-5 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase">
+                  <span>Support Tickets</span>
+                  <TicketCheck size={18} className="text-orange-500" />
                 </div>
+                <div className="text-2xl font-bold text-[#1a0f00]">{tickets.length}</div>
+                <div className="text-xs text-gray-600">Tickets logged in system</div>
               </GlassCard>
             </div>
+
+            {/* Recent Ticket Activity */}
+            <GlassCard className="p-6">
+              <h2 className="font-heading font-bold text-lg text-[#1a0f00] mb-4">Live Support Tickets</h2>
+              {tickets.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-500 font-medium border border-dashed border-gray-200 rounded-xl">
+                  No support tickets found in database. Create a new ticket under the Support Desk tab.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-sans">
+                    <thead className="border-b border-gray-200 text-gray-600 uppercase">
+                      <tr>
+                        <th className="pb-3">Ticket ID</th>
+                        <th className="pb-3">Subject</th>
+                        <th className="pb-3">Logged Date</th>
+                        <th className="pb-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {tickets.map((t) => (
+                        <tr key={t.id} className="hover:bg-orange-50/30">
+                          <td className="py-3 font-mono font-bold text-orange-600">{t.id}</td>
+                          <td className="py-3 font-semibold text-gray-800">{t.subject}</td>
+                          <td className="py-3 text-gray-500">{t.date}</td>
+                          <td className="py-3">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                              t.status === "open" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                            }`}>
+                              {t.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </GlassCard>
           </div>
         )}
 
-        {/* Tab 2: Quotations */}
+        {/* TAB 2: MY QUOTATIONS */}
         {activeTab === "quotations" && (
           <div className="flex flex-col gap-6">
-            <h2 className="font-heading font-bold text-xl text-[#1a0f00]">My Quotations</h2>
-            <div className="flex flex-col gap-4">
-              {quotes.map((q) => (
-                <div key={q.id} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex flex-col gap-1 text-xs">
-                    <span className="text-[10px] font-mono font-semibold text-orange-600">QUOTE ID: {q.id}</span>
-                    <h4 className="font-heading font-bold text-sm text-[#1a0f00] mt-1">{q.title}</h4>
-                    <span className="text-gray-500 mt-0.5">Proposed Value: <strong className="text-[#1a0f00]">${q.value.toFixed(2)}</strong> (tax inclusive)</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {q.status === "pending" && (
-                      <>
-                        <Button onClick={() => handleAcceptQuote(q.id)} variant="primary" size="sm">
-                          Accept
-                        </Button>
-                        <Button onClick={() => handleRejectQuote(q.id)} variant="secondary" size="sm">
-                          Reject
-                        </Button>
-                      </>
-                    )}
-                    {q.status === "accepted" && (
-                      <span className="px-3 py-1 rounded bg-green-50 border border-green-200 text-green-600 font-bold uppercase text-[10px]">
-                        Accepted
-                      </span>
-                    )}
-                    {q.status === "rejected" && (
-                      <span className="px-3 py-1 rounded bg-red-50 border border-red-200 text-red-600 font-bold uppercase text-[10px]">
-                        Rejected
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div>
+              <h1 className="text-2xl font-heading font-extrabold text-[#1a0f00]">My Quotations</h1>
+              <p className="text-sm text-gray-600 font-sans mt-1">Review proposals and quotations issued by our enterprise delivery team.</p>
             </div>
+
+            {quotes.length === 0 ? (
+              <GlassCard className="p-10 text-center text-sm text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
+                No quotations issued yet. Contact admin to generate a custom proposal.
+              </GlassCard>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {quotes.map((q) => (
+                  <GlassCard key={q.id || q.number} className="p-6 flex flex-col justify-between gap-4 border border-orange-100">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-xs font-mono font-bold text-orange-600 uppercase">{q.id || q.number}</span>
+                        <h3 className="font-bold text-base text-[#1a0f00] mt-1">{q.title || q.items || "Enterprise Quote Proposal"}</h3>
+                        <p className="text-xs text-gray-500 mt-1">Client: {q.clientName || currentUser?.name || "Client"}</p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                        q.status === "accepted" || q.status === "Approved" ? "bg-green-100 text-green-700" :
+                        q.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {q.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      <div>
+                        <span className="text-[10px] text-gray-600 uppercase font-semibold block">Total Estimate</span>
+                        <span className="text-xl font-extrabold text-[#1a0f00]">${(q.value || q.total || 0).toLocaleString()}</span>
+                      </div>
+
+                      {(q.status === "pending" || q.status === "Pending Approval") && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAcceptQuote(q.id || q.number || "")}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => handleRejectQuote(q.id || q.number || "")}
+                            className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tab 3: Billing / Invoices */}
+        {/* TAB 3: INVOICES & PAYMENTS */}
         {activeTab === "billing" && (
           <div className="flex flex-col gap-6">
-            <h2 className="font-heading font-bold text-xl text-[#1a0f00]">Invoices & Payments</h2>
-            <div className="flex flex-col gap-4">
-              {invoices.map((inv) => (
-                <div key={inv.id} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex flex-col gap-1 text-xs">
-                    <span className="text-[10px] font-mono font-semibold text-orange-600">INVOICE ID: {inv.id}</span>
-                    <h4 className="font-heading font-bold text-sm text-[#1a0f00] mt-1">{inv.title}</h4>
-                    <span className="text-gray-500 mt-0.5">Value: <strong className="text-[#1a0f00]">${inv.value}</strong> &bull; Due: {inv.due}</span>
-                  </div>
-                  <div>
-                    {inv.status === "paid" ? (
-                      <span className="px-3 py-1 rounded bg-green-50 border border-green-200 text-green-600 font-bold uppercase text-[10px]">
-                        Paid
-                      </span>
-                    ) : (
-                      <Button onClick={() => triggerPayment(inv)} variant="primary" size="sm">
-                        Pay Online
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div>
+              <h1 className="text-2xl font-heading font-extrabold text-[#1a0f00]">Invoices & Billing</h1>
+              <p className="text-sm text-gray-600 font-sans mt-1">Manage active billing statements and make secure online card payments.</p>
             </div>
+
+            {invoices.length === 0 ? (
+              <GlassCard className="p-10 text-center text-sm text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
+                No invoices found in database.
+              </GlassCard>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {invoices.map((inv) => (
+                  <GlassCard key={inv.id} className="p-6 flex flex-col justify-between gap-4 border border-orange-100">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-xs font-mono font-bold text-orange-600 uppercase">{inv.id}</span>
+                        <h3 className="font-bold text-base text-[#1a0f00] mt-1">{inv.title || "Services Invoice"}</h3>
+                        <p className="text-xs text-gray-500 mt-1">Due: {inv.due || inv.dueDate || "N/A"}</p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                        inv.status === "paid" || inv.status === "Paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      <div>
+                        <span className="text-[10px] text-gray-600 uppercase font-semibold block">Amount Due</span>
+                        <span className="text-xl font-extrabold text-[#1a0f00]">${(inv.value || inv.amount || 0).toLocaleString()}</span>
+                      </div>
+
+                      {(inv.status === "pending" || inv.status === "Unpaid") && (
+                        <button
+                          onClick={() => triggerPayment(inv)}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition-colors shadow-md"
+                        >
+                          Pay Invoice
+                        </button>
+                      )}
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tab 4: Support */}
+        {/* TAB 4: SUPPORT TICKET DESK */}
         {activeTab === "support" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <GlassCard className="lg:col-span-2 p-6 bg-white/50 border border-gray-200">
-              <h3 className="font-heading font-bold text-base text-[#1a0f00] mb-6">Raise Support Ticket</h3>
-              <form onSubmit={handleRaiseTicket} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subject / Ticket Title *</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="Short description of the technical issue"
-                    value={ticketSubject}
-                    onChange={(e) => setTicketSubject(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white text-xs text-[#1a0f00] placeholder:text-gray-400 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ticket Description *</label>
-                  <textarea 
-                    required
-                    rows={4}
-                    placeholder="Provide details regarding steps to reproduce or invoices related..."
-                    value={ticketBody}
-                    onChange={(e) => setTicketBody(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white text-xs text-[#1a0f00] placeholder:text-gray-400 focus:outline-none focus:border-orange-500 resize-none"
-                  />
-                </div>
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              <div>
+                <h1 className="text-2xl font-heading font-extrabold text-[#1a0f00]">Support Ticket Desk</h1>
+                <p className="text-sm text-gray-600 font-sans mt-1">Submit technical tickets or inquiry requests to the corporate support team.</p>
+              </div>
 
+              <GlassCard className="p-6">
                 {ticketSuccess && (
-                  <div className="text-[11px] text-green-600 bg-green-50 border border-green-200 p-2.5 rounded-xl font-medium">
-                    Ticket submitted successfully! Support staff will contact you shortly.
+                  <div className="mb-4 p-4 rounded-xl bg-green-50 border border-green-400 text-xs font-semibold text-green-700 flex items-center gap-2">
+                    <Check size={16} /> Support ticket created and saved to MongoDB! Admin team will review shortly.
                   </div>
                 )}
 
-                <Button type="submit" variant="primary" className="w-full mt-2">
-                  Submit Ticket
-                </Button>
-              </form>
-            </GlassCard>
-
-            <div className="flex flex-col gap-4">
-              <h3 className="font-heading font-bold text-sm text-[#1a0f00] px-2 uppercase tracking-wide">My Ticket Logs</h3>
-              {tickets.map((t) => (
-                <div key={t.id} className="p-4 rounded-xl bg-white border border-gray-250 shadow-sm flex items-center justify-between text-xs gap-3">
-                  <div>
-                    <h4 className="font-bold text-[#1a0f00]">{t.id}: {t.subject}</h4>
-                    <span className="text-[10px] text-gray-400 mt-1 block">Submitted: {t.date}</span>
+                <form onSubmit={handleRaiseTicket} className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-orange-700 uppercase">Ticket Subject *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Portal Access or Invoice Inquiry"
+                      value={ticketSubject}
+                      onChange={(e) => setTicketSubject(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-orange-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
                   </div>
-                  <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                    t.status === "resolved" ? "bg-green-50 text-green-600" :
-                    t.status === "open" ? "bg-amber-50 text-amber-600" : "bg-gray-100 text-gray-500"
-                  }`}>
-                    {t.status}
-                  </span>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-orange-700 uppercase">Message Details *</label>
+                    <textarea
+                      rows={4}
+                      placeholder="Describe your request or issue..."
+                      value={ticketBody}
+                      onChange={(e) => setTicketBody(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-orange-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
+                  </div>
+
+                  <Button type="submit" variant="primary" className="py-3 text-xs font-bold mt-2">
+                    Submit Support Ticket
+                  </Button>
+                </form>
+              </GlassCard>
+            </div>
+
+            {/* Support Information sidebar */}
+            <div className="flex flex-col gap-5">
+              <GlassCard className="p-6">
+                <h3 className="font-bold text-base text-[#1a0f00] mb-2">Corporate Support Info</h3>
+                <p className="text-xs text-gray-600 leading-relaxed mb-4">
+                  Tickets logged in this client desk are stored directly in MongoDB and processed in real time by our corporate admin team.
+                </p>
+                <div className="text-xs font-semibold text-gray-700 flex flex-col gap-2 pt-2 border-t border-gray-100">
+                  <div>• Email: <span className="text-orange-600">support@crm.com</span></div>
+                  <div>• Support Hours: 24/7 Priority SLA</div>
                 </div>
-              ))}
+              </GlassCard>
             </div>
           </div>
         )}
+
       </main>
 
-      {/* Stripe checkout payment modal */}
+      {/* STRIPE PAYMENT MODAL */}
       {showPayModal && payingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/40 backdrop-blur-sm p-4">
-          <GlassCard className="w-full max-w-md p-6 bg-white/95 border border-gray-200 shadow-elevated flex flex-col gap-6 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-              <h3 className="font-heading font-extrabold text-[#1a0f00] text-base">Secure Gateway Checkout</h3>
-              <button 
-                onClick={() => !isPaying && setShowPayModal(false)}
-                className="text-gray-400 hover:text-[#1a0f00] transition-colors text-lg"
-              >
-                &times;
-              </button>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-orange-200 flex flex-col gap-5">
+            <h3 className="font-heading font-extrabold text-xl text-[#1a0f00]">Secure Online Payment</h3>
+            <p className="text-xs text-gray-600 font-sans">
+              Paying Invoice <span className="font-mono font-bold text-orange-600">{payingInvoice.id}</span>
+            </p>
+
+            <div className="p-4 bg-orange-50 rounded-xl border border-orange-200 text-center">
+              <span className="text-xs text-gray-600 uppercase font-bold block">Total Amount</span>
+              <span className="text-2xl font-extrabold text-[#1a0f00]">${(payingInvoice.value || payingInvoice.amount || 0).toLocaleString()}</span>
             </div>
-            
+
             {paymentSuccess ? (
-              <div className="flex flex-col items-center gap-4 py-6 text-center">
-                <div className="w-12 h-12 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-green-600">
-                  <Check size={24} />
-                </div>
-                <div>
-                  <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">Payment Successful!</h4>
-                  <p className="text-xs text-gray-500 mt-1">Invoice {payingInvoice.id} was marked as Paid.</p>
-                </div>
+              <div className="p-4 bg-green-50 border border-green-400 text-green-700 text-xs font-bold rounded-xl text-center flex items-center justify-center gap-2">
+                <Check size={16} /> Payment Processed & Logged to Database!
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 flex flex-col gap-1 text-xs">
-                  <span className="text-gray-400">Total Invoice Value:</span>
-                  <span className="text-[#1a0f00] font-extrabold text-base">${payingInvoice.value.toLocaleString()}.00 USD</span>
+              <div className="flex flex-col gap-3">
+                <input
+                  type="text"
+                  placeholder="Card Number (•••• •••• •••• ••••)"
+                  className="w-full px-4 py-2.5 rounded-xl border border-orange-200 text-xs font-medium focus:outline-none"
+                  defaultValue="4242 •••• •••• 4242"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="text" placeholder="MM/YY" className="w-full px-4 py-2.5 rounded-xl border border-orange-200 text-xs font-medium" defaultValue="12/28" />
+                  <input type="text" placeholder="CVC" className="w-full px-4 py-2.5 rounded-xl border border-orange-200 text-xs font-medium" defaultValue="123" />
                 </div>
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Card Number</label>
-                    <input 
-                      type="text" 
-                      placeholder="4242 4242 4242 4242" 
-                      disabled
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-gray-100/50 text-xs text-[#1a0f00] focus:outline-none"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Expiry Date</label>
-                      <input 
-                        type="text" 
-                        placeholder="12 / 29" 
-                        disabled
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-gray-100/50 text-xs text-[#1a0f00] focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">CVC</label>
-                      <input 
-                        type="text" 
-                        placeholder="***" 
-                        disabled
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-gray-100/50 text-xs text-[#1a0f00] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <Button 
+                <Button
                   onClick={executeMockPayment}
-                  disabled={isPaying} 
+                  disabled={isPaying}
                   variant="primary"
-                  className="w-full mt-2"
+                  className="w-full py-3 mt-2 text-xs font-bold"
                 >
-                  {isPaying ? "Processing..." : `Pay $${payingInvoice.value.toLocaleString()}.00`}
+                  {isPaying ? "Processing Payment..." : "Confirm & Pay Now"}
                 </Button>
+                <button
+                  onClick={() => setShowPayModal(false)}
+                  className="text-xs font-semibold text-gray-500 hover:text-gray-800 text-center pt-1"
+                >
+                  Cancel
+                </button>
               </div>
             )}
-          </GlassCard>
+          </div>
         </div>
       )}
     </div>
   );
 }
-

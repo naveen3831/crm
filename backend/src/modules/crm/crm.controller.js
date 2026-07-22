@@ -1,430 +1,297 @@
-const CRMRecord = require("./crm.model");
+const mongoose = require("mongoose");
+const User = require("../auth/user.model");
+const { getModel, collectionNames } = require("./models");
+const Quotation = require("./models/quotation.model");
+const OurProject = require("./models/ourproject.model");
 
-// Seeding helper to ensure the user gets a working starting setup
-const seedInitialData = async () => {
-  const count = await CRMRecord.countDocuments();
-  if (count > 0) return;
+const seedBuildYourThoughtsRecords = async () => {
+  try {
+    const OurProjectModel = getModel("our-projects");
+    const QuotationModel = getModel("quotation");
 
-  console.log("[Database Seeding] Database is empty, seeding initial CRM records...");
+    await OurProjectModel.updateOne(
+      { id: "OPRJ-7001" },
+      {
+        $set: {
+          id: "OPRJ-7001",
+          name: "Build Your Thoughts",
+          title: "Build Your Thoughts",
+          category: "AI Web Application",
+          clientName: "Build Your Thoughts / Speshway",
+          budget: 45000,
+          status: "Live Production",
+          liveUrl: "https://buildyourthoughts.com",
+          description: "Full-stack AI thought workspace & content generation engine built with Vite, React, Node.js, and TailwindCSS."
+        }
+      },
+      { upsert: true }
+    );
 
-  const initialRecords = [
-    // Clients
-    {
-      type: "client",
-      customId: "CLI-1002",
-      data: {
-        id: "CLI-1002",
-        name: "Marcus Vance",
-        company: "Vanguard Retail Inc",
-        email: "m.vance@vanguard.com",
-        phone: "+91 98452 10245",
-        whatsapp: "+91 98452 10245",
-        address: "M G Road, Bangalore, KA, 560001",
-        industry: "Retail",
-        type: "Existing",
-        assignedEmployee: "Nisha Rao (Sales Lead)",
-        status: "Active",
-        notes: "High priority client. Handles large scale retail logistics.",
-        createdDate: "2026-06-12"
-      }
-    },
-    {
-      type: "client",
-      customId: "CLI-1003",
-      data: {
-        id: "CLI-1003",
-        name: "Sarah Jenkins",
-        company: "AeroSpace Logistics",
-        email: "s.jenkins@aerolog.com",
-        phone: "+91 74502 99401",
-        whatsapp: "+91 74502 99401",
-        address: "Whitefield Tech Park, Bangalore, KA, 560066",
-        industry: "Transportation",
-        type: "Existing",
-        assignedEmployee: "Devon Miller (Account Executive)",
-        status: "Active",
-        notes: "Requirements include secure real-time GPS tracking.",
-        createdDate: "2026-05-18"
-      }
-    },
-    {
-      type: "client",
-      customId: "CLI-1004",
-      data: {
-        id: "CLI-1004",
-        name: "John Doe",
-        company: "Acme Corporation",
-        email: "john@acme.com",
-        phone: "+1 (555) 459-0012",
-        whatsapp: "+1 (555) 459-0012",
-        address: "Silicon Valley Boulevard, Suite 400, CA",
-        industry: "Manufacturing",
-        type: "Potential",
-        assignedEmployee: "Nisha Rao (Sales Lead)",
-        status: "Potential",
-        notes: "Looking to deploy a fully-integrated invoice tracker dashboard.",
-        createdDate: "2026-07-02"
-      }
-    },
-    // Calls
-    {
-      type: "call",
-      customId: "CAL-8802",
-      data: {
-        id: "CAL-8802",
-        clientId: "CLI-1002",
-        clientName: "Marcus Vance",
-        phoneNumber: "+91 98452 10245",
-        calledBy: "Nisha Rao",
-        type: "Outgoing",
-        date: "2026-07-21",
-        startTime: "10:30 AM",
-        endTime: "10:45 AM",
-        duration: "15 mins",
-        status: "Completed",
-        purpose: "Project discussion",
-        notes: "Discussed database schema migrations and estimated pricing.",
-        followUpDate: "2026-07-25",
-        nextAction: "Send quotation review PDF"
-      }
-    },
-    {
-      type: "call",
-      customId: "CAL-8803",
-      data: {
-        id: "CAL-8803",
-        clientId: "CLI-1004",
-        clientName: "John Doe",
-        phoneNumber: "+1 (555) 459-0012",
-        calledBy: "Marcus Vance",
-        type: "Follow-up",
-        date: "2026-07-21",
-        startTime: "11:15 AM",
-        endTime: "11:20 AM",
-        duration: "5 mins",
-        status: "Connected",
-        purpose: "Sales call",
-        notes: "Checked lead qualification criteria and budget limits.",
-        followUpDate: "2026-07-28",
-        nextAction: "Schedule zoom presentation"
-      }
-    },
-    // Leads
-    {
-      type: "lead",
-      customId: "LEA-4001",
-      data: {
-        id: "LEA-4001",
-        name: "Alex River",
-        companyName: "River Logistics Co",
-        email: "alex@riverlog.com",
-        phone: "+91 88450 11928",
-        whatsapp: "+91 88450 11928",
-        source: "Google Ads",
-        interestedService: "GPS API Integrations",
-        expectedBudget: 15000,
-        assignedEmployee: "Nisha Rao",
-        priority: "High",
-        leadScore: 85,
-        nextFollowUpDate: "2026-07-24",
-        notes: "Highly qualified lead. Intends to convert before end of quarter.",
-        status: "Qualified",
-        createdDate: "2026-07-15"
-      }
-    },
-    {
-      type: "lead",
-      customId: "LEA-4002",
-      data: {
-        id: "LEA-4002",
-        name: "Elena Rostova",
-        companyName: "Rostov Tech Inc",
-        email: "elena@rostovtech.ru",
-        phone: "+7 910 445-1299",
-        whatsapp: "+7 910 445-1299",
-        source: "Website",
-        interestedService: "CRM Cloud Setup",
-        expectedBudget: 8000,
-        assignedEmployee: "Devon Miller",
-        priority: "Medium",
-        leadScore: 60,
-        nextFollowUpDate: "2026-07-26",
-        notes: "Filled contact form. Requested email callbacks.",
-        status: "New",
-        createdDate: "2026-07-20"
-      }
-    },
-    // Projects
-    {
-      type: "project",
-      customId: "PRJ-901",
-      data: {
-        id: "PRJ-901",
-        name: "Enterprise Database Migration & Setup",
-        clientName: "Vanguard Retail Inc",
-        category: "Database Integration",
-        manager: "Nisha Rao",
-        teamMembers: ["Karan (Backend Developer)", "Sophia (Testing Specialist)"],
-        startDate: "2026-06-15",
-        expectedCompletionDate: "2026-08-30",
-        budget: 45000,
-        priority: "High",
-        description: "Migration of legacy Oracle retail transactions ledger onto MongoDB cluster.",
-        progress: 68,
-        status: "In progress"
-      }
-    },
-    {
-      type: "project",
-      customId: "PRJ-902",
-      data: {
-        id: "PRJ-902",
-        name: "Stripe Payment Gateway Configurations",
-        clientName: "AeroSpace Logistics",
-        category: "Fintech Security",
-        manager: "Devon Miller",
-        teamMembers: ["Karan (Backend)", "Arjun (Frontend UI)"],
-        startDate: "2026-07-01",
-        expectedCompletionDate: "2026-07-25",
-        budget: 12000,
-        priority: "Medium",
-        description: "Implementation of multi-currency invoice checkout cards for Client cargo billing.",
-        progress: 90,
-        status: "Testing"
-      }
-    },
-    // Quotations
-    {
-      type: "quotation",
-      customId: "QT-2026-0045",
-      data: {
-        number: "QT-2026-0045",
-        clientName: "Vanguard Retail Inc",
-        projectName: "Enterprise Database Migration & Setup",
-        title: "Data Migration & Setup Consulting Proposal",
-        serviceItems: [
-          { service: "Data Sanitization & Extraction pipelines", qty: 1, rate: 1500 },
-          { service: "MongoDB Cluster Architecture Config", qty: 1, rate: 2000 },
-          { service: "Security Audit & Firewalls setup", qty: 1, rate: 1000 }
-        ],
-        discount: 5,
-        tax: 18,
-        validUntil: "2026-08-15",
-        terms: "50% advance, 50% upon successful testing signoff.",
-        notes: "Includes standard support SLA for first three months.",
-        createdBy: "Nisha Rao",
-        createdDate: "2026-06-10",
-        status: "Approved"
-      }
-    },
-    // Features
-    {
-      type: "feature",
-      customId: "FEAT-101",
-      data: {
-        id: "FEAT-101",
-        projectId: "PRJ-901",
-        projectName: "Enterprise Database Migration & Setup",
-        title: "Stripe API Webhook Sync",
-        moduleName: "Billing Gateways",
-        description: "Setup real time alerts on transaction completions.",
-        requirementType: "Functional",
-        priority: "High",
-        assignedDeveloper: "Karan (Developer)",
-        startDate: "2026-06-20",
-        dueDate: "2026-07-10",
-        estimatedHours: 40,
-        progress: 100,
-        status: "Completed",
-        clientApproval: true,
-        notes: "Successfully deployed and tested on Sandbox environment."
-      }
-    },
-    {
-      type: "feature",
-      customId: "FEAT-102",
-      data: {
-        id: "FEAT-102",
-        projectId: "PRJ-901",
-        projectName: "Enterprise Database Migration & Setup",
-        title: "Logistics Dashboard Frontend Cards",
-        moduleName: "User Experience UI",
-        description: "Add responsive KPI indicators.",
-        requirementType: "UI/UX Enhancements",
-        priority: "Medium",
-        assignedDeveloper: "Arjun (Frontend Developer)",
-        startDate: "2026-07-02",
-        dueDate: "2026-07-28",
-        estimatedHours: 35,
-        progress: 60,
-        status: "In development",
-        clientApproval: false,
-        notes: "Pending final style guides from the UX lead."
-      }
-    },
-    // Innovations
-    {
-      type: "innovation",
-      customId: "INN-001",
-      data: {
-        id: "INN-001",
-        title: "Generative AI Auto-fill for Shipping Logs",
-        projectId: "PRJ-901",
-        projectName: "Enterprise Database Migration & Setup",
-        proposedBy: "Sophia (Testing Specialist)",
-        description: "Implement automated data entry using small local LLM configurations.",
-        businessBenefit: "Cuts client log entry delays by 85%.",
-        technicalBenefit: "Reduces server load during high traffic periods.",
-        estimatedCost: 3500,
-        estimatedDevTime: "3 weeks",
-        priority: "High",
-        approvalStatus: "Under review",
-        implementationStatus: "Researching",
-        clientFeedback: "Extremely interested in exploring operational cost reduction details.",
-        adminNotes: "Feasible if run locally. Security constraints need checking."
-      }
-    },
-    // Invoices
-    {
-      type: "invoice",
-      customId: "INV-1024",
-      data: { id: "INV-1024", clientName: "Vanguard Retail Inc", value: 4500, status: "Pending", due: "July 30, 2026" }
-    },
-    {
-      type: "invoice",
-      customId: "INV-0982",
-      data: { id: "INV-0982", clientName: "AeroSpace Logistics", value: 1200, status: "Paid", due: "June 30, 2026" }
-    },
-    // Payments
-    {
-      type: "payment",
-      customId: "TXN-74029",
-      data: { id: "TXN-74029", clientName: "AeroSpace Logistics", amount: 1200, gateway: "Stripe", date: "2026-06-30" }
-    },
-    // Expenses
-    {
-      type: "expense",
-      customId: "EXP-092",
-      data: { id: "EXP-092", title: "AWS Cloud Server Hosting", value: 340, category: "Infrastructure", date: "2026-07-01" }
-    },
-    // Users
-    {
-      type: "user",
-      customId: "USR-001",
-      data: { name: "Admin Operator", email: "admin@crm.com", role: "Super Admin", status: "Active" }
-    },
-    {
-      type: "user",
-      customId: "USR-002",
-      data: { name: "John Doe", email: "customer@crm.com", role: "Client Access", status: "Active" }
-    },
-    // Employees
-    {
-      type: "employee",
-      customId: "EMP-01",
-      data: { id: "EMP-01", name: "Nisha Rao", role: "Sales Executive Lead", dept: "Corporate CRM", status: "Active" }
-    },
-    {
-      type: "employee",
-      customId: "EMP-02",
-      data: { id: "EMP-02", name: "Karan Johar", role: "Sr. Backend Engineer", dept: "Engineering", status: "Active" }
-    },
-    // Teams
-    {
-      type: "team",
-      customId: "TEAM-01",
-      data: { name: "Enterprise Delivery Team", members: "Nisha R, Karan J, Sophia W", lead: "Nisha Rao", activeProjects: 2 }
-    }
-  ];
-
-  await CRMRecord.insertMany(initialRecords);
-  console.log("[Database Seeding] Successfully seeded initial CRM records.");
+    await QuotationModel.updateOne(
+      { id: "QT-7001" },
+      {
+        $set: {
+          id: "QT-7001",
+          number: "QT-7001",
+          title: "Build Your Thoughts Quotation",
+          clientName: "Build Your Thoughts / Speshway",
+          date: "2026-07-22",
+          validUntil: "2026-08-22",
+          status: "Approved",
+          tax: 18,
+          discount: 10,
+          serviceItems: [
+            { description: "Vite React Animated UI & Shadcn Component Suite", qty: 1, rate: 20000 },
+            { description: "Node.js Backend & Content API Server Integration", qty: 1, rate: 18000 },
+            { description: "Production Deployment & Domain Binding", qty: 1, rate: 7000 }
+          ]
+        }
+      },
+      { upsert: true }
+    );
+    console.log("[Seed] 'Build Your Thoughts' records successfully synced in MongoDB Atlas.");
+  } catch (err) {
+    console.error("[Seed Build Your Thoughts Error]", err);
+  }
 };
 
-// 1. Get all records of a specific type
+exports.seedBuildYourThoughtsRecords = seedBuildYourThoughtsRecords;
+
+// 1. Get all records from dedicated collection
 exports.getRecords = async (req, res, next) => {
   try {
-    await seedInitialData(); // Trigger check/seed on first request
-    
     const { type } = req.params;
-    const records = await CRMRecord.find({ type });
-    // Extract internal nested objects and return clean arrays for direct React state set
-    const dataList = records.map(r => r.data);
-    
+    await seedBuildYourThoughtsRecords();
+
+    // Special handler for "user" type -> Query users collection
+    if (type === "user") {
+      const dbUsers = await User.find({}).select("-password").lean();
+      const userList = dbUsers.map(u => ({
+        id: u._id.toString(),
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        company: u.company,
+        role: u.role === "admin" ? "Super Admin" : "Client Access",
+        status: u.status || "Active",
+      }));
+
+      return res.status(200).json({
+        success: true,
+        count: userList.length,
+        data: userList,
+      });
+    }
+
+    const Model = getModel(type);
+    let docs = await Model.find({}).lean();
+
+    if (mongoose.connection && mongoose.connection.db) {
+      const colName = collectionNames[(type || "").toLowerCase().trim()] || (type.endsWith("s") ? type : `${type}s`);
+      const nativeDocs = await mongoose.connection.db.collection(colName).find({}).toArray();
+      if (nativeDocs.length > docs.length) {
+        docs = nativeDocs;
+      }
+    }
+
+    const formattedDocs = docs.map(doc => {
+      const { _id, __v, ...rest } = doc;
+      const docId = doc.id || doc.number || doc.customId || (_id ? _id.toString() : String(Math.random()));
+      return { id: docId, ...rest };
+    });
+
+    const normType = (type || "").toLowerCase().trim();
+    if ((normType === "our-projects" || normType === "ourproject" || normType === "ourprojects") && !formattedDocs.some(d => d.id === "OPRJ-7001" || d.name === "Build Your Thoughts")) {
+      formattedDocs.unshift({
+        id: "OPRJ-7001",
+        name: "Build Your Thoughts",
+        title: "Build Your Thoughts",
+        category: "AI Web Application",
+        clientName: "Build Your Thoughts / Speshway",
+        budget: 45000,
+        status: "Live Production",
+        liveUrl: "https://buildyourthoughts.com",
+        description: "Full-stack AI thought workspace & content generation engine built with Vite, React, Node.js, and TailwindCSS."
+      });
+    }
+
     res.status(200).json({
       success: true,
-      count: dataList.length,
-      data: dataList
+      count: formattedDocs.length,
+      data: formattedDocs,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// 2. Create a new record of a specific type
+// 2. Create a new record in dedicated collection
 exports.createRecord = async (req, res, next) => {
   try {
     const { type } = req.params;
     const payload = req.body;
-    
-    // Determine custom unique business key
-    const customId = payload.id || payload.number || payload.name || `REC-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const newRecord = new CRMRecord({
-      type,
-      customId,
-      data: payload
-    });
+    const uniqueSuffix = `${Date.now()}-${Math.floor(100 + Math.random() * 899)}`;
+    const customId = payload.id || payload.number || payload.customId || `${type.toUpperCase()}-${uniqueSuffix}`;
+    const recordData = { ...payload, id: customId };
 
-    await newRecord.save();
+    const Model = getModel(type);
+    const newDoc = new Model(recordData);
+    await newDoc.save();
+
+    const result = newDoc.toObject();
+    delete result.__v;
 
     res.status(201).json({
       success: true,
-      data: newRecord.data
+      data: result,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// 3. Update an existing record
+// 3. Update an existing record in dedicated collection
 exports.updateRecord = async (req, res, next) => {
   try {
     const { type, id } = req.params;
     const payload = req.body;
 
-    const record = await CRMRecord.findOne({ type, customId: id });
-    if (!record) {
-      return res.status(404).json({ success: false, message: "Record not found" });
+    if (type === "user") {
+      const updatedUser = await User.findOneAndUpdate(
+        { $or: [{ email: id }, { _id: id }] },
+        { $set: payload },
+        { new: true }
+      ).select("-password").lean();
+
+      if (!updatedUser) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: updatedUser._id.toString(),
+          name: updatedUser.name,
+          email: updatedUser.email,
+          role: updatedUser.role === "admin" ? "Super Admin" : "Client Access",
+          status: updatedUser.status || "Active",
+        },
+      });
     }
 
-    record.data = { ...record.data, ...payload };
-    // Maintain key reference sync
-    record.markModified("data");
-    await record.save();
+    const Model = getModel(type);
+    const cleanId = (id || "").trim();
+    const isHex = typeof cleanId === "string" && /^[0-9a-fA-F]{24}$/.test(cleanId);
+
+    const queryConditions = [
+      { id: cleanId },
+      { number: cleanId },
+      { customId: cleanId }
+    ];
+    if (payload.projectId) {
+      queryConditions.push({ projectId: payload.projectId });
+    }
+    if (payload.projectName) {
+      queryConditions.push({ projectName: payload.projectName });
+    }
+    if (isHex) {
+      queryConditions.push({ _id: cleanId });
+    }
+
+    const docIdToSave = payload.id || cleanId;
+    const docNumberToSave = payload.number || payload.id || cleanId;
+
+    const updatedDoc = await Model.findOneAndUpdate(
+      { $or: queryConditions },
+      { $set: { ...payload, id: docIdToSave, number: docNumberToSave } },
+      { new: true, upsert: true }
+    ).lean();
+
+    if (updatedDoc.__v !== undefined) {
+      delete updatedDoc.__v;
+    }
 
     res.status(200).json({
       success: true,
-      data: record.data
+      data: updatedDoc,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// 4. Delete a record
+// 4. Delete a record from dedicated collection
 exports.deleteRecord = async (req, res, next) => {
   try {
     const { type, id } = req.params;
 
-    const result = await CRMRecord.deleteOne({ type, customId: id });
+    if (type === "user") {
+      const normalizedId = id.toLowerCase().trim();
+      if (normalizedId === "admin@crm.com") {
+        return res.status(400).json({
+          success: false,
+          message: "Primary Seeded Admin account cannot be deleted.",
+        });
+      }
+
+      const isHexObjectId = typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id);
+      const userQuery = isHexObjectId
+        ? { $or: [{ _id: id }, { email: normalizedId }] }
+        : { email: normalizedId };
+
+      const deleteResult = await User.deleteOne(userQuery);
+
+      return res.status(200).json({
+        success: true,
+        message: "User successfully deleted from database.",
+        deletedCount: deleteResult.deletedCount
+      });
+    }
+
+    const Model = getModel(type);
+    const cleanId = (id || "").trim();
+    const isHex = typeof cleanId === "string" && /^[0-9a-fA-F]{24}$/.test(cleanId);
+    
+    const deleteConditions = [
+      { id: cleanId },
+      { id: new RegExp(`^${cleanId}$`, "i") },
+      { number: cleanId },
+      { customId: cleanId }
+    ];
+
+    if (isHex) {
+      deleteConditions.push({ _id: cleanId });
+    }
+
+    const result = await Model.deleteOne({ $or: deleteConditions });
     if (result.deletedCount === 0) {
       return res.status(404).json({ success: false, message: "Record not found" });
     }
 
     res.status(200).json({
       success: true,
-      message: "Record successfully deleted"
+      message: "Record successfully deleted from database.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 5. Clear all database records across dedicated collections
+exports.clearDatabase = async (req, res, next) => {
+  try {
+    for (const key of Object.keys(collectionNames)) {
+      const Model = getModel(key);
+      await Model.deleteMany({});
+    }
+
+    // Also drop legacy collection if present
+    await mongoose.connection.collection("crmrecords").drop().catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      message: "All CRM database collections cleared successfully.",
     });
   } catch (error) {
     next(error);

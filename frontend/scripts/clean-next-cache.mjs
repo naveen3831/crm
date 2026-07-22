@@ -17,17 +17,17 @@ if (!existsSync(cacheDir)) {
 
 if (process.platform === "win32") {
   const escapedCacheDir = cacheDir.replaceAll("'", "''");
-  const result = spawnSync(
+  spawnSync(
     "powershell.exe",
     [
       "-NoProfile",
       "-Command",
-      `Remove-Item -LiteralPath '${escapedCacheDir}' -Recurse -Force`,
+      `Remove-Item -LiteralPath '${escapedCacheDir}' -Recurse -Force -ErrorAction SilentlyContinue`,
     ],
     { cwd: process.cwd(), stdio: "inherit" },
   );
 
-  process.exit(result.status ?? 1);
+  process.exit(0);
 }
 
 rmSync(cacheDir, { recursive: true, force: true });
