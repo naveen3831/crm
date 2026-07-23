@@ -226,6 +226,100 @@ export default function AdminDashboard() {
     return false;
   };
 
+  const sanitizeTextContent = (text: string, defaultFallback: string = ""): string => {
+    if (!text || typeof text !== "string") return defaultFallback;
+
+    const hasGarbage = text.includes("\uFFFD") || text.includes("") || text.includes("FlateDecode") || text.includes("endstream") || text.includes("endobj") || text.includes("Mozilla/5.0") || text.includes("AppleWebKit") || /\/Font|\/BBox|\/StructParents|\/MediaBox/.test(text);
+
+    if (!hasGarbage) {
+      const trimmed = text.trim();
+      return trimmed.length > 0 ? trimmed : defaultFallback;
+    }
+
+    const lines = text.split(/\r?\n/);
+    const cleanLines = lines.filter(line => {
+      const l = line.trim();
+      if (!l || l.length < 3) return false;
+      if (l.includes("\uFFFD") || l.includes("")) return false;
+      if (l.includes("FlateDecode") || l.includes("endstream") || l.includes("endobj") || l.includes("Mozilla/5.0") || l.includes("AppleWebKit")) return false;
+      if (/^\/[A-Z][a-zA-Z0-9_]*/.test(l) || /^\d+\s+\d+\s+obj/i.test(l) || l.includes("stream x")) return false;
+
+      const printableCount = (l.match(/[a-zA-Z0-9\s.,:;!?'"()\-/$%#&*+=@]/g) || []).length;
+      return (printableCount / l.length) >= 0.75;
+    });
+
+    const result = cleanLines.join("\n").trim();
+    return result.length > 0 ? result : defaultFallback;
+  };
+
+  const extractReadableTextFromFile = (file: File, content: string): string[] => {
+    if (!content) return [];
+    const fileName = file.name.toLowerCase();
+
+    // 1. JSON file handling
+    if (fileName.endsWith(".json")) {
+      try {
+        const parsed = JSON.parse(content);
+        if (typeof parsed === "string") return [parsed];
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => typeof item === "string" ? item : (item.title || item.name || item.deliverable || item.description || JSON.stringify(item)));
+        }
+        if (typeof parsed === "object" && parsed !== null) {
+          const lines: string[] = [];
+          Object.entries(parsed).forEach(([key, val]) => {
+            if (typeof val === "string" && val.trim().length > 0) {
+              lines.push(`${key}: ${val.trim()}`);
+            } else if (Array.isArray(val)) {
+              val.forEach(v => {
+                if (typeof v === "string") lines.push(v);
+                else if (typeof v === "object" && v !== null) {
+                  lines.push(v.deliverable || v.title || v.name || v.description || JSON.stringify(v));
+                }
+              });
+            }
+          });
+          return lines.length > 0 ? lines : [JSON.stringify(parsed)];
+        }
+      } catch {}
+    }
+
+    // 2. DOCX XML tag extraction
+    if (fileName.endsWith(".docx") || content.includes("<w:t")) {
+      const matches = content.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
+      if (matches && matches.length > 0) {
+        const extracted = matches.map(m => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+        if (extracted.length > 0) return extracted;
+      }
+    }
+
+    // 3. PDF stream text extraction
+    if (fileName.endsWith(".pdf") || content.startsWith("%PDF")) {
+      const parenMatches = content.match(/\(([^()\\]|\\[\s\S])*\)/g);
+      const pdfTextLines: string[] = [];
+      if (parenMatches) {
+        parenMatches.forEach(match => {
+          const clean = match.slice(1, -1).replace(/\\([()])/g, "$1").trim();
+          const printableCount = (clean.match(/[a-zA-Z0-9\s.,:;!?'"()\-/$%#&*+=@]/g) || []).length;
+          if (clean.length >= 3 && (printableCount / clean.length) >= 0.75 && !/^\/[A-Z]/.test(clean) && !clean.startsWith("%") && !clean.includes("Skia/PDF") && !clean.includes("Mozilla/5.0")) {
+            pdfTextLines.push(clean);
+          }
+        });
+      }
+      if (pdfTextLines.length > 0) return pdfTextLines;
+    }
+
+    // 4. TXT / CSV / Raw text fallback - strictly filter binary noise
+    const rawLines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const printableLines = rawLines.filter(line => {
+      if (line.includes("\uFFFD") || line.includes("")) return false;
+      const isNoise = line.startsWith("%PDF") || line.startsWith("%") || line.includes("endstream") || line.includes("endobj") || line.includes("Mozilla/5.0") || line.includes("AppleWebKit") || /^\/[A-Z][a-zA-Z0-9_]*/.test(line);
+      const printableCount = (line.match(/[a-zA-Z0-9\s.,:;!?'"()\-/$%#&*+=@]/g) || []).length;
+      return !isNoise && (printableCount / line.length) >= 0.75;
+    });
+
+    return printableLines;
+  };
+
   const getCleanPlanComparisonItems = (items: any[]) => {
     if (!Array.isArray(items) || items.length === 0) return defaultPlanComparisonDeliverables;
     const cleaned = items.filter((it: any) => {
@@ -258,7 +352,7 @@ export default function AdminDashboard() {
       let extractedFeatures: any[] = [];
 
       try {
-        if (file.name.endsWith(".json")) {
+        if (file.name.toLowerCase().endsWith(".json")) {
           const parsed = JSON.parse(content);
           const items = Array.isArray(parsed) ? parsed : (parsed.features || parsed.serviceItems || parsed.deliverables || [parsed]);
           extractedFeatures = items.map((item: any, idx: number) => ({
@@ -274,7 +368,7 @@ export default function AdminDashboard() {
             status: item.status || "Completed",
             sourceFile: file.name
           }));
-        } else if (file.name.endsWith(".csv")) {
+        } else if (file.name.toLowerCase().endsWith(".csv")) {
           const lines = content.split(/\r?\n/).filter(line => line.trim().length > 0);
           extractedFeatures = lines.map((line, idx) => {
             const parts = line.split(",");
@@ -296,7 +390,7 @@ export default function AdminDashboard() {
             };
           });
         } else {
-          const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          const lines = extractReadableTextFromFile(file, content);
           extractedFeatures = lines
             .filter(l => {
               const lower = l.toLowerCase();
@@ -350,6 +444,7 @@ export default function AdminDashboard() {
         console.error("[File Parse Error]", err);
         alert("Failed to parse features file. Please ensure it is a valid TXT, JSON, or CSV file.");
       }
+      if (e.target) e.target.value = "";
     };
     reader.readAsText(file);
   };
@@ -423,46 +518,67 @@ export default function AdminDashboard() {
     const file = e.target.files?.[0];
     if (!file || !activeProjectDetail) return;
 
+    const currentSection = sectionId || activeProjectTab || "overview";
     setUploadedFileName(file.name);
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (!content) return;
 
-      const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isPdfBinaryNoise(l));
+      const lines = extractReadableTextFromFile(file, content);
       const cleanText = lines.join('\n');
-      const qId = activeQuote.id || activeQuote.number || `QT-${activeProjectDetail.id}`;
+      const qId = activeQuote?.id || activeQuote?.number || `QT-${activeProjectDetail.id}`;
 
-      if (sectionId === "overview") {
+      // Support full JSON quote configuration upload
+      if (file.name.toLowerCase().endsWith(".json")) {
+        try {
+          const jsonParsed = JSON.parse(content);
+          if (typeof jsonParsed === "object" && jsonParsed !== null && !Array.isArray(jsonParsed)) {
+            await handleSaveQuotationSection(qId, jsonParsed);
+            alert(`Uploaded JSON proposal document '${file.name}' and updated fields in database!`);
+            if (e.target) e.target.value = "";
+            return;
+          }
+        } catch {}
+      }
+
+      if (currentSection === "overview") {
         await handleSaveQuotationSection(qId, { overviewNarrative: cleanText });
-      } else if (sectionId === "user-roles") {
+      } else if (currentSection === "user-roles") {
         const third = Math.ceil(lines.length / 3);
-        const cDesc = lines.slice(0, third).join(' ') || cleanText;
-        const mDesc = lines.slice(third, third * 2).join(' ') || cleanText;
-        const aDesc = lines.slice(third * 2).join(' ') || cleanText;
+        const cDesc = lines.slice(0, third).join('\n') || cleanText;
+        const mDesc = lines.slice(third, third * 2).join('\n') || cleanText;
+        const aDesc = lines.slice(third * 2).join('\n') || cleanText;
         await handleSaveQuotationSection(qId, { customerDesc: cDesc, merchantDesc: mDesc, adminDesc: aDesc });
-      } else if (sectionId === "features") {
+      } else if (currentSection === "features") {
         await handleFeatureFileUpload(e);
+        if (e.target) e.target.value = "";
         return;
-      } else if (sectionId === "investment-plans") {
+      } else if (currentSection === "investment-plans") {
         const nums = cleanText.match(/\d[\d,.]*/g);
         if (nums && nums.length >= 2) {
           const pA = Number(nums[0].replace(/,/g, ''));
           const pB = Number(nums[1].replace(/,/g, ''));
-          await handleSaveQuotationSection(qId, { planAPrice: pA, planBPrice: pB });
+          await handleSaveQuotationSection(qId, { planAPrice: pA, planBPrice: pB, overviewNarrative: cleanText });
         } else {
           await handleSaveQuotationSection(qId, { overviewNarrative: cleanText });
         }
-      } else if (sectionId === "plan-comparison") {
+      } else if (currentSection === "plan-comparison") {
         const items = lines.map(line => ({ deliverable: line, planA: true, planB: true }));
         await handleSaveQuotationSection(qId, { planComparisonItems: items });
-      } else if (sectionId === "payment-terms") {
+      } else if (currentSection === "payment-terms") {
         await handleSaveQuotationSection(qId, { paymentTerms: cleanText });
-      } else if (sectionId === "terms-conditions") {
+      } else if (currentSection === "terms-conditions") {
         await handleSaveQuotationSection(qId, { termsAndConditions: cleanText });
+      } else if (currentSection === "company-details") {
+        await handleSaveQuotationSection(qId, { companyDetailsDoc: cleanText });
+      } else {
+        await handleSaveQuotationSection(qId, { overviewNarrative: cleanText });
       }
 
-      alert(`Uploaded document '${file.name}' and updated Section: ${sectionId}!`);
+      alert(`Uploaded document '${file.name}' and updated section '${currentSection}' successfully!`);
+      if (e.target) e.target.value = "";
     };
     reader.readAsText(file);
   };
@@ -490,7 +606,6 @@ export default function AdminDashboard() {
     const afterDiscount = subtotal * (1 - discPct / 100);
     const taxPct = Math.max(0, Number(q.tax || 18));
     const finalVal = Math.round(afterDiscount * (1 + taxPct / 100));
-
     return (isNaN(finalVal) || finalVal > 100000000) ? 59000 : finalVal;
   };
 
@@ -499,7 +614,7 @@ export default function AdminDashboard() {
 
   const handleQuoteFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeProjectDetail) return;
+    if (!file) return;
 
     setUploadedQuoteFileName(file.name);
     const reader = new FileReader();
@@ -507,13 +622,14 @@ export default function AdminDashboard() {
       const content = event.target?.result as string;
       if (!content) return;
 
-      const projName = activeProjectDetail.name || activeProjectDetail.title || "Project";
-      const clientName = activeProjectDetail.clientName || "Client Profile";
+      const projId = activeProjectDetail ? activeProjectDetail.id : `PROJ-${Date.now().toString().slice(-4)}`;
+      const projName = activeProjectDetail ? (activeProjectDetail.name || activeProjectDetail.title) : "General Proposal";
+      const clientName = activeProjectDetail ? (activeProjectDetail.clientName || "Enterprise Client") : "Enterprise Client";
 
       let parsedQuoteData: any = null;
 
       try {
-        if (file.name.endsWith(".json")) {
+        if (file.name.toLowerCase().endsWith(".json")) {
           const parsed = JSON.parse(content);
           parsedQuoteData = {
             title: parsed.title || `${projName} Custom Quotation Proposal`,
@@ -557,15 +673,11 @@ export default function AdminDashboard() {
               : []
           };
         } else {
-          const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-          const overviewLine = lines.find(l => l.toLowerCase().includes("overview")) || "";
+          const lines = extractReadableTextFromFile(file, content);
+          const overviewLine = lines.find(l => l.toLowerCase().includes("overview")) || lines[0] || "";
           const termsLine = lines.find(l => l.toLowerCase().includes("term")) || "";
 
           const parsedItems = lines
-            .filter(l => {
-              const lower = l.toLowerCase();
-              return !lower.startsWith("ref:") && !lower.startsWith("date:") && !lower.startsWith("project:") && !lower.startsWith("client:") && !lower.startsWith("valid until:") && !lower.startsWith("overview:") && !lower.startsWith("terms:");
-            })
             .slice(0, 15)
             .map((line, idx) => {
               const cleanLine = line.replace(/^[•\-\*\d+\.\>\)]+\s*/, "").trim();
@@ -595,26 +707,6 @@ export default function AdminDashboard() {
               };
             });
 
-          const compItemsFromFile = parsedItems.map(it => {
-            const lower = (it.title || "").toLowerCase();
-            const isMobile = lower.includes("mobile") || lower.includes("app store") || lower.includes("play store") || lower.includes("push") || lower.includes("ios") || lower.includes("android");
-            return {
-              deliverable: it.title,
-              planA: !isMobile,
-              planB: true
-            };
-          });
-
-          const defaultCompItems = [
-            { deliverable: "Customer, Merchant & Admin Web Portals", planA: true, planB: true },
-            { deliverable: "All Core Marketplace Features", planA: true, planB: true },
-            { deliverable: "Secure Payment Gateway (Card / UPI)", planA: true, planB: true },
-            { deliverable: "QR Ticket Check-In", planA: true, planB: true },
-            { deliverable: "Android & iOS Mobile Apps", planA: false, planB: true },
-            { deliverable: "Push Notifications", planA: false, planB: true },
-            { deliverable: "App Store / Play Store Publishing", planA: false, planB: true }
-          ];
-
           parsedQuoteData = {
             title: `${projName} Custom Quotation Proposal`,
             clientName: clientName,
@@ -624,7 +716,7 @@ export default function AdminDashboard() {
             planAPrice: 60000,
             planBName: "PLAN B — Web + Mobile",
             planBPrice: 110000,
-            planComparisonItems: compItemsFromFile.length > 0 ? compItemsFromFile : defaultCompItems,
+            planComparisonItems: lines.map(l => ({ deliverable: l, planA: true, planB: true })),
             discount: 0,
             tax: 18,
             validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -644,7 +736,7 @@ export default function AdminDashboard() {
         const finalQuoteRecord: any = {
           id: quoteId,
           number: quoteId,
-          projectId: activeProjectDetail.id,
+          projectId: projId,
           ...parsedQuoteData,
           status: "Approved",
           createdBy: "File Import Operator",
@@ -653,59 +745,25 @@ export default function AdminDashboard() {
         };
 
         try {
-          await fetch(`${API_URL}/crm/quotation`, {
+          const res = await fetch(`${API_URL}/crm/quotation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(finalQuoteRecord)
-          });
-        } catch (e) {
-          console.error(e);
+          }).then(r => r.json());
+
+          const newQuote = res.data || finalQuoteRecord;
+          setQuotations(prev => [newQuote, ...prev]);
+          alert(`Successfully imported quotation file '${file.name}' and saved proposal to database!`);
+        } catch (err) {
+          console.error("[Save Quote File Error]", err);
+          setQuotations(prev => [finalQuoteRecord, ...prev]);
+          alert(`Imported proposal from '${file.name}'!`);
         }
-
-        setQuotations(prev => [
-          finalQuoteRecord,
-          ...prev.filter(q => q.projectId !== activeProjectDetail.id && q.projectName !== projName)
-        ]);
-
-        // Extract project features automatically from quotation file
-        const extractedFeaturesFromQuote = (parsedQuoteData.serviceItems || []).map((it: any, idx: number) => ({
-          id: `FEAT-${Date.now()}-${idx}`,
-          projectId: activeProjectDetail.id,
-          projectName: activeProjectDetail.name || activeProjectDetail.title,
-          title: it.description || it.title || it.service || `Feature ${idx + 1}`,
-          moduleName: "Quotation Scope Module",
-          description: it.description || `Extracted scope item from file ${file.name}`,
-          priority: "High",
-          assignedDeveloper: "Quotation File Import",
-          progress: 100,
-          status: "Completed",
-          sourceFile: file.name
-        }));
-
-        if (extractedFeaturesFromQuote.length > 0) {
-          setFeatures(prev => [
-            ...extractedFeaturesFromQuote,
-            ...prev.filter(f => f.projectId !== activeProjectDetail.id && f.projectName !== (activeProjectDetail.name || activeProjectDetail.title))
-          ]);
-
-          for (const feat of extractedFeaturesFromQuote) {
-            try {
-              await fetch(`${API_URL}/crm/feature`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(feat)
-              });
-            } catch (err) {
-              console.error(err);
-            }
-          }
-        }
-
-        alert(`Quotation proposal and ${extractedFeaturesFromQuote.length} features successfully imported from file: ${file.name}!`);
       } catch (err) {
-        console.error("[Quote File Upload Error]", err);
-        alert("Failed to parse quotation file. Please upload a valid JSON or text file.");
+        console.error("[Quote File Error]", err);
+        alert("Failed to process file. Please ensure it is a valid TXT, JSON, CSV, DOC, or PDF file.");
       }
+      if (e.target) e.target.value = "";
     };
     reader.readAsText(file);
   };
@@ -950,11 +1008,12 @@ export default function AdminDashboard() {
       </tr>
     `).join('');
 
-    const overviewText = project?.description || quote?.overviewNarrative || `${projName} is a single online marketplace platform that brings together everyday needs &mdash; buying tickets to events (concerts, festivals, workshops) and hiring event-related services (DJs, decorators, photographers, venues, caterers). The platform connects three types of users: Customers who discover and book events/services, Merchants who list and sell tickets or services, and an Admin who governs the entire ecosystem &mdash; approving merchants, managing commissions, and ensuring safe, smooth operations.`;
+    const defaultOverviewText = `${projName} is a comprehensive digital solution designed to streamline client workflows, automate service bookings, track financial transactions, and optimize administration.`;
+    const overviewText = sanitizeTextContent(quote?.overviewNarrative || project?.description, defaultOverviewText);
 
-    const customerDesc = quote?.customerDesc || "Buys tickets or hires services, adds multiple items to a cart, and checks out together in a single transaction.";
-    const merchantDesc = quote?.merchantDesc || "Sells tickets/services, manages bookings, markets their business, and earns money through the platform.";
-    const adminDesc = quote?.adminDesc || "Owns and controls the platform — approves merchants, earns commission, and keeps the ecosystem safe.";
+    const customerDesc = sanitizeTextContent(quote?.customerDesc, "Buys tickets or hires services, adds multiple items to a cart, and checks out together in a single transaction.");
+    const merchantDesc = sanitizeTextContent(quote?.merchantDesc, "Sells tickets/services, manages bookings, markets their business, and earns money through the platform.");
+    const adminDesc = sanitizeTextContent(quote?.adminDesc, "Owns and controls the platform — approves merchants, earns commission, and keeps the ecosystem safe.");
 
     const compName = quote?.companyName || "SPESHWAY SOLUTIONS";
     const compTagline = quote?.companyTagline || "Website & App Development Company | Hyderabad, India";
@@ -985,16 +1044,18 @@ export default function AdminDashboard() {
       </div>
     `;
 
-    const paymentTermsListHtml = (quote?.paymentTerms && quote.paymentTerms.trim()) 
-      ? quote.paymentTerms.split('\n').filter((l: string) => l.trim()).map((l: string) => `<li>${l}</li>`).join('')
+    const cleanPaymentTerms = sanitizeTextContent(quote?.paymentTerms);
+    const paymentTermsListHtml = (cleanPaymentTerms && cleanPaymentTerms.trim()) 
+      ? cleanPaymentTerms.split('\n').filter((l: string) => l.trim()).map((l: string) => `<li>${l}</li>`).join('')
       : `
         <li><strong>40% advance</strong> on project kick-off</li>
         <li><strong>30%</strong> on completion of core module development & UAT build</li>
         <li><strong>30%</strong> on final delivery, deployment & go-live</li>
       `;
 
-    const termsAndConditionsListHtml = (quote?.termsAndConditions && quote.termsAndConditions.trim())
-      ? quote.termsAndConditions.split('\n').filter((l: string) => l.trim()).map((l: string) => `<li>${l}</li>`).join('')
+    const cleanTermsConditions = sanitizeTextContent(quote?.termsAndConditions);
+    const termsAndConditionsListHtml = (cleanTermsConditions && cleanTermsConditions.trim())
+      ? cleanTermsConditions.split('\n').filter((l: string) => l.trim()).map((l: string) => `<li>${l}</li>`).join('')
       : `
         <li>Estimation is valid for 30 days from the date of this document.</li>
         <li>Timeline: Plan A &mdash; approx. 6&ndash;8 weeks; Plan B &mdash; approx. 10&ndash;12 weeks from kick-off, subject to timely client inputs.</li>
@@ -2475,6 +2536,13 @@ export default function AdminDashboard() {
 
       {/* 2. MAIN WORKSPACE CONTENT CONTAINER */}
       <main className="flex-1 p-6 md:p-8 flex flex-col gap-6 overflow-y-auto">
+        <input 
+          type="file" 
+          ref={quoteFileInputRef} 
+          accept=".txt,.json,.csv,.doc,.docx,.pdf" 
+          onChange={handleQuoteFileUpload} 
+          className="hidden" 
+        />
         {reviewingQuote ? (
           <QuoteReviewModal
             reviewingQuote={reviewingQuote}

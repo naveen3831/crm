@@ -107,8 +107,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-80px)] flex items-center justify-center px-4 py-6 sm:py-10 hero-gradient">
-      <div className="w-full max-w-sm sm:max-w-xl bg-white border border-orange-200/90 shadow-2xl rounded-2xl p-6 sm:p-8 my-auto transition-all">
+    <div className="min-h-[calc(100vh-140px)] flex items-center justify-center px-4 py-8 sm:py-12 hero-gradient">
+      <div className="w-full max-w-sm sm:max-w-xl bg-white border border-orange-200/90 shadow-2xl rounded-2xl p-6 sm:p-8 transition-all">
         
         {/* Brand Header */}
         <div className="flex flex-col items-center gap-3 mb-6 sm:mb-8 text-center">

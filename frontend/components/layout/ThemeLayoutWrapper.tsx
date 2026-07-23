@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -9,16 +9,6 @@ import Footer from "./Footer";
 
 export default function ThemeLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Avoid hydration mismatch by rendering a clean wrapper on the server
-  if (!mounted) {
-    return <main className="w-full relative min-h-screen flex flex-col">{children}</main>;
-  }
 
   // Hide public navbar and footer on admin & customer dashboard layouts
   const isDashboardRoute = pathname?.startsWith("/admin") || pathname?.startsWith("/customer");
@@ -30,17 +20,17 @@ export default function ThemeLayoutWrapper({ children }: { children: React.React
   const isHomePage = pathname === "/";
 
   return (
-    <>
+    <div className="w-full min-h-screen flex flex-col justify-between">
       <Navbar />
       
-      {/* Mobile Back Button (Only visible on subpages, rendered below the top navbar) */}
-      {pathname !== "/" && (
-        <div className="md:hidden w-full px-6 pt-5 pb-1 max-w-7xl mx-auto">
+      {/* Mobile Back Button (Only visible on non-home subpages) */}
+      {!isHomePage && (
+        <div className="md:hidden w-full px-6 pt-4 pb-1 max-w-7xl mx-auto">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-[#041429] transition-all duration-200 py-1.5 px-3.5 rounded-xl bg-white border border-gray-200 shadow-sm"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#78350f] hover:text-[#1a0f00] transition-all duration-200 py-1.5 px-3.5 rounded-xl bg-white border border-orange-200 shadow-sm"
           >
-            <ArrowLeft size={13} className="text-[#1687F8]" />
+            <ArrowLeft size={13} className="text-orange-600" />
             <span>Back to Home</span>
           </Link>
         </div>
@@ -49,7 +39,9 @@ export default function ThemeLayoutWrapper({ children }: { children: React.React
       <main className={`flex-grow w-full relative ${isHomePage ? "pb-24 md:pb-0" : ""}`}>
         {children}
       </main>
+      
       <Footer />
-    </>
+    </div>
   );
 }
+

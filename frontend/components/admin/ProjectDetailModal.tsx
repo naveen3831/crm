@@ -249,7 +249,10 @@ export default function ProjectDetailModal({
         type="file" 
         ref={universalSectionFileInputRef} 
         accept=".txt,.json,.csv,.doc,.docx,.pdf" 
-        onChange={(e) => handleUniversalSectionFileUpload(e, activeSectionToUpload, activeQuote)} 
+        onChange={(e) => {
+          handleUniversalSectionFileUpload(e, activeProjectTab, activeQuote);
+          if (e.target) e.target.value = "";
+        }} 
         className="hidden" 
       />
 
@@ -452,7 +455,6 @@ export default function ProjectDetailModal({
                     <input
                       type="text"
                       placeholder="Enter custom project classification..."
-                      value={activeQuote.projectType || ""}
                       onChange={e => updateQuoteField({ projectType: e.target.value })}
                       className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-[#1a0f00] bg-gray-50 focus:outline-none focus:border-orange-500"
                     />
