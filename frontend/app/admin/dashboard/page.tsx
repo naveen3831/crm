@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Users, 
   TrendingUp, 
@@ -41,12 +42,16 @@ import {
   Upload,
   FileCode,
   Paperclip,
-  Edit3
+  Edit3,
+  Maximize2
 } from "lucide-react";
 import GlassCard from "../../../components/ui/GlassCard";
 import Button from "../../../components/ui/Button";
 import ProjectDetailModal from "../../../components/admin/ProjectDetailModal";
 import QuoteReviewModal from "../../../components/admin/QuoteReviewModal";
+import HMSPresetSelectionModal from "../../../components/admin/HMSPresetSelectionModal";
+import HMSPresetStudioPage from "../../../components/admin/HMSPresetStudioPage";
+import { HMS_PRESETS } from "@/lib/HMSPresets";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
 
@@ -177,6 +182,7 @@ interface Lead {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -189,11 +195,56 @@ export default function AdminDashboard() {
   const [ourProjects, setOurProjects] = useState<any[]>([]);
   const [showOurProjectModal, setShowOurProjectModal] = useState(false);
   const [activeOurProjectQuotation, setActiveOurProjectQuotation] = useState<any>(null);
+  const [presetSelectionProject, setPresetSelectionProject] = useState<any>(null);
   const [ourProjectForm, setOurProjectForm] = useState({ name: "", category: "Web Application", clientName: "Internal / Showcase", budget: 0, liveUrl: "", description: "" });
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [features, setFeatures] = useState<ProjectFeature[]>([]);
   const [editingQuote, setEditingQuote] = useState<any>(null);
   const [reviewingQuote, setReviewingQuote] = useState<any>(null);
+
+  const handleSelectPresetFromModal = async (presetKey: "website" | "website_app" | "app") => {
+    if (!presetSelectionProject) return;
+    const targetProj = presetSelectionProject;
+    setPresetSelectionProject(null);
+
+    const preset = HMS_PRESETS[presetKey];
+    if (preset) {
+      const projectTypesMap: Record<string, string[]> = {
+        website: ["Web Application"],
+        website_app: ["Web Application", "Mobile Application (iOS & Android)"],
+        app: ["Mobile Application (iOS & Android)"]
+      };
+
+      const updatedFields = {
+        id: `QT-${targetProj.id || "0001"}`,
+        number: `QT-${targetProj.id || "0001"}`,
+        projectId: targetProj.id,
+        projectName: targetProj.name || targetProj.title,
+        clientName: targetProj.clientName || "Enterprise Client",
+        projectTypes: projectTypesMap[presetKey],
+        projectType: preset.category,
+        title: `${targetProj.name || targetProj.title} ${preset.title}`,
+        overviewNarrative: preset.overviewNarrative,
+        userRoles: preset.rolesMatrix.map((r, i) => ({ id: String(i + 1), title: r.role, description: r.description, count: r.count, permissions: r.permissions })),
+        customerDesc: preset.customerDesc,
+        merchantDesc: preset.merchantDesc,
+        adminDesc: preset.adminDesc,
+        planAPrice: preset.planAPrice,
+        planBPrice: preset.planBPrice,
+        planCPrice: preset.planCPrice,
+        planComparisonItems: preset.planComparisonItems,
+        paymentTerms: preset.paymentTerms,
+        termsAndConditions: preset.termsAndConditions,
+        companyDetailsDoc: preset.companyDetailsDoc,
+        status: "Approved"
+      };
+
+      await handleSaveQuotationSection(updatedFields.id, updatedFields);
+    }
+
+    setActiveProjectDetail(targetProj);
+    setActiveProjectTab("all");
+  };
   const [reviewMode, setReviewMode] = useState<"exact-pdf" | "structured">("exact-pdf");
   const [reviewerNotes, setReviewerNotes] = useState<string>("");
   const [editingFeature, setEditingFeature] = useState<any>(null);
@@ -976,13 +1027,150 @@ export default function AdminDashboard() {
     const docTitle = quote?.title || "Event & Service Marketplace Platform";
     const docRef = quote?.documentRef || `SPW/EST/${projName.toUpperCase().replace(/[^A-Z0-9]/g, '')}/2026`;
     const currencySymbol = (quote?.currency || "").includes("INR") || !(quote?.currency || "").includes("$") ? "₹" : "$";
-    const planAName = quote?.planAName || "PLAN A — Web Platform Only";
-    const planAPrice = quote?.planAPrice || (project?.budget ? Math.round(project.budget * 0.4) : 80000);
-    const planBName = quote?.planBName || "PLAN B — Web + Mobile App";
-    const planBPrice = quote?.planBPrice || (project?.budget ? project.budget : 140000);
     const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    const projectType = quote?.projectType || 'Web Application';
     const currency = quote?.currency || 'Indian Rupees (INR)';
+    const rawType = typeof quote?.projectType === 'string' ? quote.projectType : (typeof project?.category === 'string' ? project.category : 'Web Application');
+    const selectedTypes: string[] = Array.isArray(quote?.projectTypes) && quote.projectTypes.length > 0
+      ? quote.projectTypes
+      : rawType.split(' + ').map((s: string) => s.trim()).filter(Boolean);
+
+    const projectTypeDisplay = selectedTypes.join(' + ');
+    const isHybridProposal = selectedTypes.length > 1;
+
+    // Distinct Theme Palettes Per Project Type
+    let domainPrimaryColor = "#0f172a";
+    let domainSecondaryColor = "#0284c7";
+    let defaultPlanA = "PLAN A — Standard Web Application";
+    let defaultPlanB = "PLAN B — Enterprise Web Platform + CMS (Recommended)";
+
+    if (isHybridProposal) {
+      domainPrimaryColor = "#0f172a";
+      domainSecondaryColor = "#ea580c";
+      defaultPlanA = "PLAN A — Core Single Domain Build";
+      defaultPlanB = `PLAN B — Full Multi-Platform Hybrid Ecosystem (${selectedTypes.join(" + ")})`;
+    } else if (selectedTypes.includes("Mobile Application (iOS & Android)")) {
+      domainPrimaryColor = "#4c1d95";
+      domainSecondaryColor = "#9333ea";
+      defaultPlanA = "PLAN A — Single Platform Build (Android or iOS)";
+      defaultPlanB = "PLAN B — Dual Platform iOS + Android Launch (Recommended)";
+    } else if (selectedTypes.includes("E-Commerce & Digital Marketplace")) {
+      domainPrimaryColor = "#064e3b";
+      domainSecondaryColor = "#059669";
+      defaultPlanA = "PLAN A — Single Storefront E-Commerce";
+      defaultPlanB = "PLAN B — Multi-Vendor Marketplace + Vendor Dashboard (Recommended)";
+    } else if (selectedTypes.includes("Cloud / DevOps & Microservices")) {
+      domainPrimaryColor = "#1e293b";
+      domainSecondaryColor = "#d97706";
+      defaultPlanA = "PLAN A — Single Cloud Server & CI/CD Setup";
+      defaultPlanB = "PLAN B — Multi-Region Kubernetes Cluster & 99.9% SLA (Recommended)";
+    } else if (selectedTypes.includes("AI / ML & Intelligent Automation")) {
+      domainPrimaryColor = "#881337";
+      domainSecondaryColor = "#e11d48";
+      defaultPlanA = "PLAN A — Core AI API Integration & Chatbot";
+      defaultPlanB = "PLAN B — Full RAG Vector Knowledge Engine + Autonomous AI Agents (Recommended)";
+    } else if (selectedTypes.includes("Enterprise ERP & CRM Software")) {
+      domainPrimaryColor = "#1e1b4b";
+      domainSecondaryColor = "#4f46e5";
+      defaultPlanA = "PLAN A — Standard ERP Core Module";
+      defaultPlanB = "PLAN B — Multi-Tenant Enterprise ERP Suite + Audit Trail (Recommended)";
+    } else if (selectedTypes.includes("Custom Software Development")) {
+      domainPrimaryColor = "#7c2d12";
+      domainSecondaryColor = "#ea580c";
+      defaultPlanA = "PLAN A — Core Custom Software Build";
+      defaultPlanB = "PLAN B — Advanced Enterprise Custom Suite (Recommended)";
+    }
+
+    const planAName = quote?.planAName || defaultPlanA;
+    const planAPrice = quote?.planAPrice || (project?.budget ? Math.round(project.budget * 0.4) : 80000);
+    const planBName = quote?.planBName || defaultPlanB;
+    const planBPrice = quote?.planBPrice || (project?.budget ? project.budget : 140000);
+    const formattedPlanAPrice = typeof planAPrice === 'number' ? planAPrice.toLocaleString() : (Number(planAPrice) || 80000).toLocaleString();
+    const formattedPlanBPrice = typeof planBPrice === 'number' ? planBPrice.toLocaleString() : (Number(planBPrice) || 140000).toLocaleString();
+
+    const pdfPrimaryColor = quote?.pdfPrimaryColor || domainPrimaryColor;
+    const pdfSecondaryColor = quote?.pdfSecondaryColor || domainSecondaryColor;
+
+    // Cross-Domain Hybrid Synergy Header Block
+    let hybridSynergyHtml = '';
+    if (isHybridProposal) {
+      hybridSynergyHtml = `
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; border-left: 4px solid #ea580c; position: relative; z-index: 1;">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #fdba74; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+            <span>🔥 HYBRID MULTI-DOMAIN ARCHITECTURE SYNERGY</span>
+            <span style="font-size: 8px; background: #ea580c; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 900;">${selectedTypes.length} DOMAINS INTEGRATED</span>
+          </div>
+          <p style="font-size: 9.5px; color: #cbd5e1; line-height: 1.5; margin: 0;">
+            This hybrid enterprise solution unifies <strong>${selectedTypes.join(" &bull; ")}</strong>. All selected platforms share a single centralized data layer, unified RESTful/GraphQL APIs, and single-sign-on (SSO) authentication.
+          </p>
+        </div>
+      `;
+    }
+
+    // Domain Specific Architecture & Technical Specs
+    let domainSpecsHtml = '';
+
+    if (selectedTypes.includes('Web Application')) {
+      domainSpecsHtml += `
+        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #0369a1; text-transform: uppercase; display: block; margin-bottom: 3px;">🌐 WEB APPLICATION ARCHITECTURE & SCOPE</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">Mobile-responsive HTML5/CSS3 layout, cross-browser compatibility (Chrome/Safari/Firefox/Edge), 90+ Lighthouse performance optimization, SSL security & SEO OpenGraph tags.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('Mobile Application (iOS & Android)')) {
+      domainSpecsHtml += `
+        <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #7e22ce; text-transform: uppercase; display: block; margin-bottom: 3px;">📱 MOBILE APPLICATION SPECS (iOS & ANDROID)</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">Cross-platform Flutter/React Native build, Apple App Store & Google Play publishing, Firebase Push Notifications, FaceID biometric security & offline data caching.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('E-Commerce & Digital Marketplace')) {
+      domainSpecsHtml += `
+        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #047857; text-transform: uppercase; display: block; margin-bottom: 3px;">🛒 E-COMMERCE & MARKETPLACE INFRASTRUCTURE</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">Multi-variant SKUs, cart checkout flow, PCI-DSS Stripe/Razorpay payment gateways, merchant commission payout ledger & automated cart recovery.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('Cloud / DevOps & Microservices')) {
+      domainSpecsHtml += `
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #b45309; text-transform: uppercase; display: block; margin-bottom: 3px;">☁️ CLOUD DEVOPS & CONTAINERIZED ARCHITECTURE</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">AWS/GCP Terraform IaC provisioning, Docker containerization, Kubernetes auto-scaling, GitHub Actions zero-downtime CI/CD & 99.9% High Availability SLA.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('AI / ML & Intelligent Automation')) {
+      domainSpecsHtml += `
+        <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #be123c; text-transform: uppercase; display: block; margin-bottom: 3px;">🤖 AI / ML & INTELLIGENT AUTOMATION ENGINE</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">OpenAI/Claude LLM APIs, RAG Vector Search (Pinecone/pgvector), customer chatbot escalation agents & strict API rate limiting with zero client data model training.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('Enterprise ERP & CRM Software')) {
+      domainSpecsHtml += `
+        <div style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #3730a3; text-transform: uppercase; display: block; margin-bottom: 3px;">🏢 ENTERPRISE ERP & CRM ARCHITECTURE</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">Multi-tenant Role-Based Access Control (RBAC), custom multi-step workflow approval chains, enterprise audit trail logging & bulk CSV/Excel REST Webhooks.</span>
+        </div>
+      `;
+    }
+
+    if (selectedTypes.includes('Custom Software Development') || domainSpecsHtml === '') {
+      domainSpecsHtml += `
+        <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px;">
+          <strong style="font-size: 10.5px; color: #c2410c; text-transform: uppercase; display: block; margin-bottom: 3px;">⚡ CUSTOM SOFTWARE SPECIFICATION</strong>
+          <span style="font-size: 9.5px; color: #334155; line-height: 1.4; display: block;">Tailored domain architecture, custom database schema design, high-performance RESTful APIs with Redis caching & modular enterprise codebase.</span>
+        </div>
+      `;
+    }
 
     const featItems = (projectFeaturesList && projectFeaturesList.length > 0) ? projectFeaturesList : [
       { title: "Ticketed Events", description: "Buy tickets for concerts, festivals, shows — with tiered pricing (e.g. Silver, Gold, Diamond) and session options (Day/Night)." },
@@ -1021,10 +1209,8 @@ export default function AdminDashboard() {
     const compPhone = quote?.companyPhone || "+91 91000 06020";
     const compWebsite = quote?.companyWebsite || "www.speshway.com";
     const compAddress = quote?.companyAddress || "T-Hub, Plot No 1/C, Sy No 83/1, Raidurgam, Knowledge City Road, Serilingampalle (M), Hyderabad, Telangana 500032, India";
-    const pdfPrimaryColor = quote?.pdfPrimaryColor || "#4c1d95";
-    const pdfSecondaryColor = quote?.pdfSecondaryColor || "#7c3aed";
     const logoUrl = quote?.companyLogoUrl || "";
-    const watermarkImg = quote?.companyWatermarkUrl || quote?.companyLogoUrl || "";
+    const watermarkImg = quote?.companyWatermarkUrl || "";
     const watermarkText = quote?.companyWatermarkText || quote?.companyName || compName;
     const watermarkOpacity = quote?.companyWatermarkOpacity ?? 0.15;
     const watermarkContrast = quote?.companyWatermarkContrast ?? 150;
@@ -1123,13 +1309,13 @@ export default function AdminDashboard() {
               <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 20px; background: #fcfaff; border: 1px solid #ede9fe; padding: 16px 18px; border-radius: 8px; margin-bottom: 24px;">
                 <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Prepared For</span><strong style="font-size: 12px; color: #1e1b4b;">Client &mdash; ${clientName}</strong></div>
                 <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Prepared By</span><strong style="font-size: 12px; color: #1e1b4b;">${compName}</strong></div>
-                <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Project Type</span><strong style="font-size: 12px; color: #1e1b4b;">${projectType}</strong></div>
+                <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Selected Project Domains</span><strong style="font-size: 11px; color: #1e1b4b; line-height: 1.3; display: block;">${projectTypeDisplay}</strong></div>
                 <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Currency</span><strong style="font-size: 12px; color: #1e1b4b;">${currency}</strong></div>
                 <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Document Ref</span><strong style="font-size: 11px; font-family: monospace; color: #1e1b4b;">${docRef}</strong></div>
-                <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Validity</span><strong style="font-size: 12px; color: #1e1b4b;">30 Days from Date of Issue</strong></div>
+                <div><span style="font-size: 9px; font-weight: 700; color: ${pdfPrimaryColor}; text-transform: uppercase; display: block; margin-bottom: 2px;">Proposal Format</span><strong style="font-size: 12px; color: #1e1b4b;">${isHybridProposal ? `🔥 Hybrid (${selectedTypes.length} Domains)` : '⚡ Specialized Single Domain'}</strong></div>
               </div>
 
-              <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-bottom: 12px; text-transform: uppercase;">1. Project Overview</div>
+              <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-bottom: 12px; text-transform: uppercase;">1. Project Executive Overview</div>
               <p style="font-size: 11px; line-height: 1.6; color: #374151; margin: 0 0 24px 0; background: #fafafa; padding: 14px; border-radius: 8px; border-left: 4px solid ${pdfSecondaryColor};">${overviewText}</p>
 
               <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-bottom: 12px; text-transform: uppercase;">2. User Roles</div>
@@ -1158,7 +1344,11 @@ export default function AdminDashboard() {
             </div>
 
             <div style="padding: 26px;">
-              <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-bottom: 14px; text-transform: uppercase;">3. Complete Feature List &mdash; Included in Scope</div>
+              ${hybridSynergyHtml}
+              <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-bottom: 12px; text-transform: uppercase;">3. Domain Technical Specifications (${selectedTypes.length} Domain${selectedTypes.length > 1 ? 's' : ''})</div>
+              ${domainSpecsHtml}
+
+              <div style="background: ${pdfPrimaryColor}; color: #ffffff; padding: 8px 14px; font-size: 13px; font-weight: 800; border-radius: 6px; margin-top: 14px; margin-bottom: 12px; text-transform: uppercase;">4. Feature Scope Matrix</div>
               <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
                 <thead>
                   <tr style="background: ${pdfPrimaryColor}; color: #ffffff;">
@@ -1198,7 +1388,7 @@ export default function AdminDashboard() {
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px;">
                 <div style="background: ${pdfPrimaryColor}; color: #ffffff; border-radius: 10px; padding: 18px;">
                   <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; opacity: 0.9;">${planAName}</div>
-                  <div style="font-size: 28px; font-weight: 900; margin: 8px 0 12px 0; color: #ffffff;">${currencySymbol}${planAPrice.toLocaleString()}</div>
+                  <div style="font-size: 28px; font-weight: 900; margin: 8px 0 12px 0; color: #ffffff;">${currencySymbol}${formattedPlanAPrice}</div>
                   <ul style="font-size: 10px; line-height: 1.6; padding-left: 14px; margin: 0; opacity: 0.95;">
                     <li>Responsive web application (Customer, Merchant & Admin portals)</li>
                     <li>All core features from Section 3</li>
@@ -1212,7 +1402,7 @@ export default function AdminDashboard() {
 
                 <div style="background: linear-gradient(135deg, ${pdfPrimaryColor}, ${pdfSecondaryColor}); color: #ffffff; border-radius: 10px; padding: 18px; border: 2px solid #a855f7; position: relative;">
                   <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; opacity: 0.9;">${planBName} <span style="background: #f59e0b; color: #ffffff; font-size: 8px; font-weight: 900; padding: 2px 6px; border-radius: 8px; margin-left: 4px;">RECOMMENDED</span></div>
-                  <div style="font-size: 28px; font-weight: 900; margin: 8px 0 12px 0; color: #ffffff;">${currencySymbol}${planBPrice.toLocaleString()}</div>
+                  <div style="font-size: 28px; font-weight: 900; margin: 8px 0 12px 0; color: #ffffff;">${currencySymbol}${formattedPlanBPrice}</div>
                   <ul style="font-size: 10px; line-height: 1.6; padding-left: 14px; margin: 0; opacity: 0.95;">
                     <li><strong>Everything in Plan A, plus:</strong></li>
                     <li>Native/hybrid mobile apps for Customer & Merchant (Android + iOS)</li>
@@ -1251,8 +1441,8 @@ export default function AdminDashboard() {
                   `).join('')}
                   <tr style="background: #f5f3ff; font-weight: 800;">
                     <td style="padding: 9px 10px; font-size: 11px; color: ${pdfPrimaryColor};">Total Investment</td>
-                    <td style="padding: 9px 10px; text-align: center; font-size: 11px; color: ${pdfSecondaryColor};">${currencySymbol}${planAPrice.toLocaleString()}</td>
-                    <td style="padding: 9px 10px; text-align: center; font-size: 11px; color: ${pdfSecondaryColor};">${currencySymbol}${planBPrice.toLocaleString()}</td>
+                    <td style="padding: 9px 10px; text-align: center; font-size: 11px; color: ${pdfSecondaryColor};">${currencySymbol}${formattedPlanAPrice}</td>
+                    <td style="padding: 9px 10px; text-align: center; font-size: 11px; color: ${pdfSecondaryColor};">${currencySymbol}${formattedPlanBPrice}</td>
                   </tr>
                 </tbody>
               </table>
@@ -2462,16 +2652,8 @@ export default function AdminDashboard() {
           
           {/* Brand Logo and icon */}
           <div className="flex items-center gap-2 group border-b border-gray-150 pb-4">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-700/10 to-blue-500/5 border border-orange-500/10 flex items-center justify-center p-1.5 text-[#1a0f00]">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" className="w-full h-full text-[#1a0f00]">
-                <path d="M 40,95 C 40,55 160,55 160,95" stroke="#f97316" strokeWidth="8" strokeLinecap="round" />
-                <rect x="62" y="70" width="18" height="50" rx="3" fill="#EE4047" />
-                <rect x="86" y="50" width="18" height="70" rx="3" fill="#FF9F0A" />
-                <rect x="110" y="30" width="18" height="90" rx="3" fill="#27C15A" />
-                <ellipse cx="100" cy="100" rx="48" ry="29" stroke="currentColor" strokeWidth="10" transform="rotate(-15, 100, 100)" />
-                <path d="M 40,95 C 40,135 160,135 160,95" stroke="#f97316" strokeWidth="8" strokeLinecap="round" />
-                <path d="M 75,122 L 35,167" stroke="currentColor" strokeWidth="15" strokeLinecap="round" />
-              </svg>
+            <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-center p-1.5 shadow-sm">
+              <img src="/logo-icon.svg" alt="CRM Logo" className="w-full h-full object-contain" />
             </div>
             <span className="font-heading font-extrabold text-base text-[#1a0f00] tracking-tight">
               CRM Admin Panel
@@ -2585,6 +2767,12 @@ export default function AdminDashboard() {
           />
         ) : (
           <>
+            <HMSPresetSelectionModal
+              isOpen={Boolean(presetSelectionProject)}
+              onClose={() => setPresetSelectionProject(null)}
+              project={presetSelectionProject}
+              onSelectPreset={handleSelectPresetFromModal}
+            />
             <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
           <div>
             <h1 className="font-heading font-extrabold text-2xl text-[#1a0f00] capitalize">
@@ -2692,11 +2880,15 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="text-xs text-gray-700">
                   {clients.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                      <td className="p-3 font-mono font-semibold text-orange-600">{c.id}</td>
+                    <tr 
+                      key={c.id} 
+                      onClick={() => router.push(`/admin/clients/${c.id}`)}
+                      className="border-b border-gray-100 hover:bg-orange-50/40 cursor-pointer transition-colors"
+                    >
+                      <td className="p-3 font-mono font-bold text-orange-600 hover:underline">{c.id}</td>
                       <td className="p-3">
-                        <div className="font-bold text-[#1a0f00]">{c.name}</div>
-                        <span className="text-[10px] text-gray-400">{c.company} &bull; {c.email}</span>
+                        <div className="font-extrabold text-slate-900 hover:text-orange-600">{c.name}</div>
+                        <span className="text-[10px] text-gray-500 font-medium">{c.company} &bull; {c.email}</span>
                       </td>
                       <td className="p-3 font-mono text-[11px]">{c.whatsapp}</td>
                       <td className="p-3">{c.assignedEmployee}</td>
@@ -2710,12 +2902,24 @@ export default function AdminDashboard() {
                           {c.status}
                         </span>
                       </td>
-                      <td className="p-3 text-right flex justify-end gap-2">
-                        <Button onClick={() => setActiveClientDetail(c)} variant="secondary" size="sm" className="px-2 py-1 flex items-center" title="View Profile">
-                          <Eye size={12} />
+                      <td className="p-3 text-right flex justify-end gap-1.5">
+                        <Button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/admin/clients/${c.id}`);
+                          }} 
+                          variant="secondary" 
+                          size="sm" 
+                          className="px-2 py-1 flex items-center border border-gray-200 hover:bg-orange-50 hover:text-orange-600" 
+                          title="View Client Details (Full Screen)"
+                        >
+                          <Eye size={14} />
                         </Button>
                         <Button 
-                          onClick={() => handleDeactivateClient(c.id)} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeactivateClient(c.id);
+                          }} 
                           variant="ghost" 
                           size="sm" 
                           className="px-2 py-1 text-[#78350f] border border-orange-200 hover:bg-orange-50"
@@ -2724,7 +2928,10 @@ export default function AdminDashboard() {
                           {c.status === "Active" ? <UserX size={12} /> : <UserCheck size={12} />}
                         </Button>
                         <Button 
-                          onClick={() => handleDeleteClient(c.id)} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClient(c.id);
+                          }} 
                           variant="outline" 
                           size="sm" 
                           className="px-2 py-1 text-red-600 border-red-200 hover:bg-red-50"
@@ -2748,7 +2955,18 @@ export default function AdminDashboard() {
                         <span className="text-[10px] font-mono text-orange-600 font-bold">{activeClientDetail.id} &bull; Profile Card</span>
                         <h3 className="font-heading font-extrabold text-[#1a0f00] text-lg mt-1">{activeClientDetail.company}</h3>
                       </div>
-                      <button onClick={() => setActiveClientDetail(null)} className="text-gray-400 hover:text-[#1a0f00] text-lg">&times;</button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => router.push(`/admin/clients/${activeClientDetail.id}`)}
+                          variant="primary"
+                          size="sm"
+                          className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs gap-1 py-1.5 px-3 rounded-xl"
+                        >
+                          <Maximize2 size={12} className="text-orange-400" />
+                          <span>Open Full Page</span>
+                        </Button>
+                        <button onClick={() => setActiveClientDetail(null)} className="text-gray-400 hover:text-[#1a0f00] text-lg font-bold">&times;</button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-xs">
@@ -2815,9 +3033,20 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                  <Button onClick={() => setActiveClientDetail(null)} variant="secondary" className="w-full mt-6">
-                    Close Details View
-                  </Button>
+                  <div className="mt-6 flex flex-col gap-2">
+                    <Button 
+                      onClick={() => router.push(`/admin/clients/${activeClientDetail.id}`)} 
+                      variant="primary" 
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-3 rounded-xl flex items-center justify-center gap-2 shadow-md"
+                    >
+                      <Maximize2 size={14} className="text-orange-400" />
+                      <span>Open FULL PAGE CLIENT PROFILE (Full Screen Studio)</span>
+                      <ChevronRight size={14} />
+                    </Button>
+                    <Button onClick={() => setActiveClientDetail(null)} variant="secondary" className="w-full">
+                      Close Details View
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3036,6 +3265,18 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Tab: Proposal Presets Studio */}
+        {activeTab === "proposal-presets" && (
+          <HMSPresetStudioPage
+            ourProjects={ourProjects}
+            onApplyPresetToProject={(proj, presetData) => {
+              handleSelectPresetFromModal(presetData.variantKey);
+              setActiveProjectDetail(proj);
+              setActiveProjectTab("all");
+            }}
+          />
+        )}
+
         {/* Tab: Our Projects */}
         {activeTab === "our-projects" && (
           <div className="flex flex-col gap-6 animate-in fade-in duration-300">
@@ -3063,17 +3304,18 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {ourProjects.map(p => (
-                  <div key={p.id} className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col justify-between gap-4 relative group">
+                  <div 
+                    key={p.id} 
+                    onClick={() => router.push(`/admin/our-projects/${p.id}/proposals`)}
+                    className="p-5 rounded-2xl bg-white border border-gray-200 shadow-sm hover:border-orange-500 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-4 relative group"
+                  >
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-[9px] font-mono bg-orange-50 text-orange-600 px-2 py-0.5 rounded font-bold">{p.id}</span>
                           <span className="text-[9px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded uppercase">{p.category || "Web App"}</span>
                         </div>
-                        <h3 
-                          onClick={() => { setActiveProjectDetail(p); setActiveProjectTab("overview"); }}
-                          className="font-heading font-bold text-sm text-[#1a0f00] mt-2 hover:text-orange-600 cursor-pointer transition-colors"
-                        >
+                        <h3 className="font-heading font-bold text-sm text-[#1a0f00] mt-2 group-hover:text-orange-600 transition-colors">
                           {p.name || p.title}
                         </h3>
                         <span className="text-[10px] text-gray-400 block mt-0.5">Showcase Client: {p.clientName || "Internal Enterprise"}</span>
@@ -3083,7 +3325,10 @@ export default function AdminDashboard() {
                           {p.status || "Live Production"}
                         </span>
                         <button
-                          onClick={() => handleDeleteOurProject(p.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOurProject(p.id);
+                          }}
                           className="text-gray-300 hover:text-red-600 transition-colors p-1"
                           title="Delete Our Project"
                         >
@@ -3098,7 +3343,10 @@ export default function AdminDashboard() {
                       <span className="font-bold text-[#1a0f00]">${(p.budget || 0).toLocaleString()}.00</span>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Button 
-                          onClick={() => { setActiveProjectDetail(p); setActiveProjectTab("overview"); }} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/admin/our-projects/${p.id}/proposals`);
+                          }} 
                           variant="secondary" 
                           size="sm"
                           className="text-[10px] py-1 px-2.5 flex items-center gap-1"
@@ -3108,13 +3356,16 @@ export default function AdminDashboard() {
                         </Button>
 
                         <Button 
-                          onClick={() => setActiveOurProjectQuotation(p)} 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/admin/our-projects/${p.id}/proposals`);
+                          }} 
                           variant="secondary" 
                           size="sm"
                           className="text-[10px] py-1 px-2.5 flex items-center gap-1"
                         >
                           <FileText size={12} className="text-orange-600" />
-                          <span>Quotation</span>
+                          <span>Proposals CRUD</span>
                         </Button>
 
                         {p.liveUrl && (
@@ -3122,6 +3373,7 @@ export default function AdminDashboard() {
                             href={p.liveUrl.startsWith("http") ? p.liveUrl : `https://${p.liveUrl}`} 
                             target="_blank" 
                             rel="noreferrer" 
+                            onClick={(e) => e.stopPropagation()}
                             className="text-orange-600 hover:underline font-semibold text-[11px] flex items-center gap-1 bg-orange-50 px-2.5 py-1 rounded-lg"
                           >
                             <span>Live Demo</span>

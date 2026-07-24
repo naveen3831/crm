@@ -240,16 +240,8 @@ export default function CustomerDashboard() {
         <div className="flex flex-col gap-8">
           {/* Logo brand */}
           <div className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-700/10 to-blue-500/5 border border-orange-500/10 flex items-center justify-center p-1 text-[#1a0f00]">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" className="w-full h-full text-[#1a0f00]">
-                <path d="M 40,95 C 40,55 160,55 160,95" stroke="#f97316" strokeWidth="7" strokeLinecap="round" />
-                <rect x="62" y="70" width="18" height="50" rx="3" fill="#EE4047" />
-                <rect x="86" y="50" width="18" height="70" rx="3" fill="#FF9F0A" />
-                <rect x="110" y="30" width="18" height="90" rx="3" fill="#27C15A" />
-                <ellipse cx="100" cy="100" rx="48" ry="29" stroke="#1a0f00" strokeWidth="10" transform="rotate(-15, 100, 100)" />
-                <path d="M 40,95 C 40,135 160,135 160,95" stroke="#f97316" strokeWidth="7" strokeLinecap="round" />
-                <path d="M 75,122 L 35,167" stroke="#1a0f00" strokeWidth="15" strokeLinecap="round" />
-              </svg>
+            <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-center p-1.5 shadow-sm">
+              <img src="/logo-icon.svg" alt="CRM Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <span className="font-heading font-extrabold text-base text-[#1a0f00] tracking-tight block leading-none">

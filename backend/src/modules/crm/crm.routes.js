@@ -4,6 +4,9 @@ const router = express.Router();
 // Clear all database records endpoint
 router.delete("/clear-database", (req, res, next) => require("./crm.controller").clearDatabase(req, res, next));
 
+// Send Nodemailer Email endpoint for Proposals and Invoices
+router.post("/send-email", (req, res, next) => require("./email.service").handleSendEmail(req, res, next));
+
 // Dynamic CRM collection endpoints mapping with dynamic require wrapper
 router.route("/:type")
   .get((req, res, next) => require("./crm.controller").getRecords(req, res, next))

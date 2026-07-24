@@ -1,9 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { uploadImageToS3 } from "@/lib/uploadService";
 import { Plus, Trash2, Edit3, Upload, ArrowLeft, Eye, Download, FileText, CheckCircle, Building2, Sparkles, Layers, ShieldCheck } from "lucide-react";
 import GlassCard from "../ui/GlassCard";
 import Button from "../ui/Button";
+import { HMS_PRESETS } from "@/lib/HMSPresets";
+import { HRMS_PRESETS } from "@/lib/HRMSPresets";
+import HMSInvoiceModal from "./HMSInvoiceModal";
+import CreateProjectProposalModal from "./CreateProjectProposalModal";
 
 interface ProjectDetailModalProps {
   activeProjectDetail: any;
@@ -60,45 +65,49 @@ export default function ProjectDetailModal({
   const logoFileInputRef = React.useRef<HTMLInputElement>(null);
   const watermarkFileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string;
-      if (base64Url) {
-        updateQuoteField({ companyLogoUrl: base64Url });
+    try {
+      const result = await uploadImageToS3(file, "crm_logos");
+      if (result.url) {
+        updateQuoteField({ companyLogoUrl: result.url });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading logo to AWS S3:", error);
+    }
   };
 
-  const handleWatermarkFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWatermarkFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string;
-      if (base64Url) {
-        updateQuoteField({ companyWatermarkUrl: base64Url });
+    try {
+      const result = await uploadImageToS3(file, "crm_watermarks");
+      if (result.url) {
+        updateQuoteField({ companyWatermarkUrl: result.url });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading watermark to AWS S3:", error);
+    }
   };
 
-  if (!activeProjectDetail) return null;
+  const [selectedProposalId, setSelectedProposalId] = useState<string>("");
+  const [isCreateProposalModalOpen, setIsCreateProposalModalOpen] = useState(false);
 
-  const foundQuote = quotations.find(q => 
+  // Filter all quotations belonging specifically to THIS project
+  const projectQuotes = quotations.filter(q => 
     (q.projectId && q.projectId === activeProjectDetail.id) || 
     (q.projectName && activeProjectDetail.name && q.projectName.toLowerCase() === activeProjectDetail.name.toLowerCase()) ||
-    (q.id && q.id === `QT-${activeProjectDetail.id}`)
+    (q.id && (q.id === `QT-${activeProjectDetail.id}` || q.id.startsWith(`QT-${activeProjectDetail.id}`)))
   );
+
+  const foundQuote = projectQuotes.find(q => q.id === selectedProposalId || (q as any).number === selectedProposalId) || projectQuotes[0];
 
   const defaultQuote = {
     id: `QT-${activeProjectDetail.id || "0001"}`,
     number: `QT-${activeProjectDetail.id || "0001"}`,
     projectId: activeProjectDetail.id,
-    title: `${activeProjectDetail.name || activeProjectDetail.title} Custom Estimation Proposal`,
+    title: `${activeProjectDetail.name || activeProjectDetail.title} Custom Proposal`,
     clientName: activeProjectDetail.clientName || "Enterprise Client",
     projectName: activeProjectDetail.name || activeProjectDetail.title,
     projectType: activeProjectDetail.category || "Web Application",
@@ -138,13 +147,50 @@ export default function ProjectDetailModal({
 
   const activeQuote = foundQuote ? { ...defaultQuote, ...foundQuote } : defaultQuote;
 
+  const handleCreateNewProjectProposal = async (proposalTitle: string, variantKey: "website" | "website_app" | "app") => {
+    const isHRMS = (activeProjectDetail?.name && activeProjectDetail.name.toLowerCase() === "hrms") || activeProjectDetail?.id === "OPRJ-4838";
+    const preset = isHRMS ? HRMS_PRESETS[variantKey] : HMS_PRESETS[variantKey];
+    const newQuoteId = `QT-${activeProjectDetail.id || "PROJ"}-${Date.now().toString().slice(-4)}`;
+
+    const projectTypesMap: Record<string, string[]> = {
+      website: ["Web Application"],
+      website_app: ["Web Application", "Mobile Application (iOS & Android)"],
+      app: ["Mobile Application (iOS & Android)"]
+    };
+
+    const newQuoteData = {
+      ...defaultQuote,
+      id: newQuoteId,
+      number: newQuoteId,
+      title: proposalTitle,
+      projectTypes: projectTypesMap[variantKey],
+      projectType: preset ? preset.category : "Web & Mobile Ecosystem",
+      overviewNarrative: preset ? preset.overviewNarrative : activeProjectDetail.description || "",
+      userRoles: preset ? preset.rolesMatrix.map((r, i) => ({ id: String(i + 1), title: r.role, description: r.description, count: r.count, permissions: r.permissions })) : defaultQuote.userRoles,
+      customerDesc: preset ? preset.customerDesc : defaultQuote.customerDesc,
+      merchantDesc: preset ? preset.merchantDesc : defaultQuote.merchantDesc,
+      adminDesc: preset ? preset.adminDesc : defaultQuote.adminDesc,
+      planAPrice: preset ? preset.planAPrice : 65000,
+      planBPrice: preset ? preset.planBPrice : 120000,
+      planCPrice: preset ? preset.planCPrice : 210000,
+      planComparisonItems: preset ? preset.planComparisonItems : defaultPlanComparisonDeliverables,
+      paymentTerms: preset ? preset.paymentTerms : defaultQuote.paymentTerms,
+      termsAndConditions: preset ? preset.termsAndConditions : defaultQuote.termsAndConditions,
+      companyDetailsDoc: preset ? preset.companyDetailsDoc : "",
+      status: "Approved"
+    };
+
+    setQuotations(prev => [newQuoteData, ...prev]);
+    setSelectedProposalId(newQuoteId);
+    setActiveProjectTab("all");
+    await handleSaveQuotationSection(newQuoteId, newQuoteData);
+  };
+
   const updateQuoteField = (updatedFields: Record<string, any>) => {
     setQuotations(prev => {
       const matchIdx = prev.findIndex(q => 
         q.id === activeQuote.id || 
-        (q as any).number === activeQuote.id || 
-        q.projectId === activeProjectDetail.id ||
-        (activeProjectDetail.name && q.projectName === activeProjectDetail.name)
+        (q as any).number === activeQuote.id
       );
       const mergedQuote = { ...activeQuote, ...updatedFields };
       if (matchIdx !== -1) {
@@ -163,6 +209,62 @@ export default function ProjectDetailModal({
     await handleSaveQuotationSection(activeQuote.id || activeQuote.number, mergedQuote);
   };
 
+  const [isHMSInvoiceOpen, setIsHMSInvoiceOpen] = useState(false);
+
+  const applyHMSPreset = async (presetKey: "website" | "website_app" | "app", autoOpenReview: boolean = true) => {
+    const isHRMS = (activeProjectDetail?.name && activeProjectDetail.name.toLowerCase() === "hrms") || activeProjectDetail?.id === "OPRJ-4838";
+    const preset = isHRMS ? HRMS_PRESETS[presetKey] : HMS_PRESETS[presetKey];
+    if (!preset) return;
+
+    const projectTypesMap: Record<string, string[]> = {
+      website: ["Web Application"],
+      website_app: ["Web Application", "Mobile Application (iOS & Android)"],
+      app: ["Mobile Application (iOS & Android)"]
+    };
+
+    const updatedFields = {
+      projectTypes: projectTypesMap[presetKey],
+      projectType: preset.category,
+      title: `${activeProjectDetail.name || activeProjectDetail.title} ${preset.title}`,
+      overviewNarrative: preset.overviewNarrative,
+      userRoles: preset.rolesMatrix.map((r, i) => ({ id: String(i + 1), title: r.role, description: r.description, count: r.count, permissions: r.permissions })),
+      customerDesc: preset.customerDesc,
+      merchantDesc: preset.merchantDesc,
+      adminDesc: preset.adminDesc,
+      planAPrice: preset.planAPrice,
+      planBPrice: preset.planBPrice,
+      planCPrice: preset.planCPrice,
+      planComparisonItems: preset.planComparisonItems,
+      paymentTerms: preset.paymentTerms,
+      termsAndConditions: preset.termsAndConditions,
+      companyDetailsDoc: preset.companyDetailsDoc
+    };
+
+    const mergedQuote = { ...activeQuote, ...updatedFields };
+    await saveQuoteSection(updatedFields);
+
+    if (preset.features && preset.features.length > 0) {
+      const newFeatures = preset.features.map((f, idx) => ({
+        id: `FEAT-HMS-${Date.now()}-${idx}`,
+        projectId: activeProjectDetail.id,
+        projectName: activeProjectDetail.name || activeProjectDetail.title,
+        title: f.title,
+        module: f.module,
+        description: f.description,
+        priority: f.priority,
+        status: "Approved"
+      }));
+      setFeatures(prev => [...newFeatures, ...prev.filter(feat => feat.projectId !== activeProjectDetail.id)]);
+    }
+
+    // Set active tab to 'all' so all 8 Proposal Sections open continuously on the page
+    setActiveProjectTab("all");
+
+    if (autoOpenReview) {
+      setReviewingQuote(mergedQuote);
+    }
+  };
+
   const activeCompItems = getCleanPlanComparisonItems(activeQuote.planComparisonItems);
 
   const activeUserRoles = activeQuote.userRoles && activeQuote.userRoles.length > 0
@@ -174,6 +276,7 @@ export default function ProjectDetailModal({
       ];
 
   const proposalTabs = [
+    { id: "all", label: "🌟 All 8 Sections (Full Master Page)", icon: "✨", page: "PDF Pages 1-4" },
     { id: "overview", label: "1. Overview & Project Type", icon: "📄", page: "PDF Page 1" },
     { id: "user-roles", label: "2. User Access & Roles", icon: "👥", page: "PDF Page 1" },
     { id: "features", label: "3. Features & Scope", icon: "⚡", page: "PDF Page 2" },
@@ -361,9 +464,10 @@ export default function ProjectDetailModal({
         <div className="flex justify-between items-center border-b border-gray-200 pb-4 mb-6 shrink-0 flex-wrap gap-3">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200">
-              ACTIVE SECTION PAGE: {activeProjectTab.toUpperCase().replace('-', ' ')}
+              ACTIVE SECTION PAGE: {activeProjectTab === "all" ? "ALL 8 PROPOSAL SECTIONS (FULL MASTER VIEW)" : activeProjectTab.toUpperCase().replace('-', ' ')}
             </span>
             <h2 className="text-xl font-heading font-extrabold text-[#1a0f00] mt-1.5">
+              {activeProjectTab === "all" && "Complete Proposal Workspace — All 8 Proposal Sections"}
               {activeProjectTab === "overview" && "1. Project Overview & Type Configuration"}
               {activeProjectTab === "user-roles" && "2. Target User Roles & Access Architecture"}
               {activeProjectTab === "features" && "3. Technical Scope & Feature Deliverables"}
@@ -421,41 +525,219 @@ export default function ProjectDetailModal({
           </div>
         </div>
 
+        {/* PROJECT PROPOSALS SWITCHER BAR */}
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-orange-50 rounded-xl text-orange-600 border border-orange-200">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-extrabold text-[#1a0f00] uppercase tracking-wider flex items-center gap-2">
+                Proposals for {activeProjectDetail.name || activeProjectDetail.title}
+                <span className="text-[10px] font-mono text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
+                  {projectQuotes.length || 1} Proposals
+                </span>
+              </h4>
+              <p className="text-[11px] text-gray-500">
+                Switch between different proposal variants for this project or create a new proposal.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {projectQuotes.map((q, idx) => {
+              const isCurrent = (activeQuote.id === q.id) || (activeQuote.number === q.number);
+              return (
+                <button
+                  key={q.id || idx}
+                  type="button"
+                  onClick={() => {
+                    setSelectedProposalId(q.id || q.number);
+                    setActiveProjectTab("all");
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    isCurrent
+                      ? "bg-gradient-to-r from-orange-500 to-amber-600 text-white border-orange-600 shadow-sm scale-105"
+                      : "bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200"
+                  }`}
+                >
+                  {q.title || `Proposal ${idx + 1}`}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setIsCreateProposalModalOpen(true)}
+              className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-1 border border-orange-400/40"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Create Proposal</span>
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 text-xs text-gray-700 space-y-6">
           {/* 1. OVERVIEW NARRATIVE & PROJECT TYPE TAB */}
-          {(activeProjectTab === "overview" || activeProjectTab === "project-details") && (
+          {(activeProjectTab === "all" || activeProjectTab === "overview" || activeProjectTab === "project-details") && (
             <div className="flex flex-col gap-5">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">1. Project Type Selection & Executive Narrative</h4>
                 <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">PDF Page 1</span>
               </div>
 
-              {/* PROJECT TYPE SELECTION CARD (FIRST STEP IN FLOW) */}
-              <div className="p-5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-orange-600" />
-                  <span className="text-xs font-extrabold text-[#1a0f00] uppercase tracking-wider">Step 1: Select Target Project Category & Type</span>
+              {/* HMS PRESET QUICK ACTION BANNER */}
+              <div className="bg-gradient-to-r from-navy-950 via-gray-900 to-orange-950 p-4 rounded-2xl text-white shadow-md border border-orange-500/30 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-orange-400" />
+                    HMS Proposal Quotation Presets (8 Proposal Sections)
+                  </h4>
+                  <p className="text-[11px] text-gray-300">
+                    Instantly load tailored 8-section proposal data for <strong>Website</strong>, <strong>Website + App</strong>, or <strong>Mobile App</strong>.
+                  </p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Project Type Dropdown</label>
-                    <select
-                      value={activeQuote.projectType || activeProjectDetail.category || "Web Application"}
-                      onChange={e => updateQuoteField({ projectType: e.target.value })}
-                      className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold text-[#1a0f00] bg-gray-50 focus:outline-none focus:border-orange-500"
-                    >
-                      {projectTypesList.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Custom Category Name</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => applyHMSPreset("website")}
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                  >
+                    <span>🌐</span> Website Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyHMSPreset("website_app")}
+                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                  >
+                    <span>⚡</span> Website + App (Hybrid)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyHMSPreset("app")}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                  >
+                    <span>📱</span> App Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsHMSInvoiceOpen(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 border border-emerald-400/40"
+                  >
+                    <span>🧾</span> HMS Global Invoice
+                  </button>
+                </div>
+              </div>
+
+              {/* MULTI-SELECT PROJECT TYPES SELECTION CARD */}
+              <div className="p-5 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col gap-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-orange-600" />
+                    <span className="text-xs font-extrabold text-[#1a0f00] uppercase tracking-wider">Step 1: Select Target Project Categories (Choose 1 to 3 Project Types)</span>
+                  </div>
+                  {(() => {
+                    const selectedTypes: string[] = Array.isArray(activeQuote.projectTypes) && activeQuote.projectTypes.length > 0
+                      ? activeQuote.projectTypes
+                      : (activeQuote.projectType || activeProjectDetail.category || "Web Application").split(" + ").map((s: string) => s.trim()).filter(Boolean);
+                    const isHybrid = selectedTypes.length > 1;
+                    return (
+                      <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
+                        isHybrid ? "bg-orange-100 text-orange-800 border-orange-300 animate-pulse" : "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        {isHybrid ? `🔥 Hybrid Proposal (${selectedTypes.length} of 3 Selected)` : `⚡ Single Domain Proposal (1 of 3 Selected)`}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[
+                    { id: "Web Application", label: "Web Application", icon: "🌐", tagline: "Portals, Dashboards & Web Apps" },
+                    { id: "Mobile Application (iOS & Android)", label: "Mobile App (iOS & Android)", icon: "📱", tagline: "Cross-Platform App Store Publishing" },
+                    { id: "E-Commerce & Digital Marketplace", label: "E-Commerce & Marketplace", icon: "🛒", tagline: "Storefront, Gateways & Vendors" },
+                    { id: "Cloud / DevOps & Microservices", label: "Cloud / DevOps & K8s", icon: "☁️", tagline: "AWS/GCP, CI/CD & 99.9% SLA" },
+                    { id: "AI / ML & Intelligent Automation", label: "AI / ML & Automation", icon: "🤖", tagline: "LLMs, Vector RAG & AI Agents" },
+                    { id: "Enterprise ERP & CRM Software", label: "Enterprise ERP & CRM", icon: "🏢", tagline: "Multi-tenant RBAC & Audit Trail" },
+                    { id: "Custom Software Development", label: "Custom Software", icon: "⚡", tagline: "Tailored Architecture & REST APIs" }
+                  ].map(item => {
+                    const selectedTypes: string[] = Array.isArray(activeQuote.projectTypes) && activeQuote.projectTypes.length > 0
+                      ? activeQuote.projectTypes
+                      : (activeQuote.projectType || activeProjectDetail.category || "Web Application").split(" + ").map((s: string) => s.trim()).filter(Boolean);
+                    
+                    const isSelected = selectedTypes.includes(item.id);
+
+                    const toggleType = async () => {
+                      let nextSelected: string[];
+                      if (isSelected) {
+                        if (selectedTypes.length <= 1) return; // Must keep at least 1
+                        nextSelected = selectedTypes.filter(id => id !== item.id);
+                      } else {
+                        if (selectedTypes.length >= 3) {
+                          alert("You can select up to 3 project types at a time for a combined hybrid proposal.");
+                          return;
+                        }
+                        nextSelected = [...selectedTypes, item.id];
+                      }
+
+                      const hasWeb = nextSelected.includes("Web Application");
+                      const hasMobile = nextSelected.includes("Mobile Application (iOS & Android)");
+
+                      if (hasWeb && hasMobile) {
+                        await applyHMSPreset("website_app", true);
+                      } else if (hasWeb) {
+                        await applyHMSPreset("website", true);
+                      } else if (hasMobile) {
+                        await applyHMSPreset("app", true);
+                      } else {
+                        const updatedFields = {
+                          projectTypes: nextSelected,
+                          projectType: nextSelected.join(" + ")
+                        };
+                        await saveQuoteSection(updatedFields);
+                        setReviewingQuote({ ...activeQuote, ...updatedFields });
+                      }
+                    };
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={toggleType}
+                        className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all duration-200 ${
+                          isSelected
+                            ? "bg-gradient-to-br from-orange-500 to-amber-600 text-white border-orange-600 shadow-md shadow-orange-500/20 scale-[1.02]"
+                            : "bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-1.5">
+                          <span className="text-lg">{item.icon}</span>
+                          <span className={`text-[10px] font-mono font-extrabold px-1.5 py-0.5 rounded ${
+                            isSelected ? "bg-white/20 text-white" : "bg-gray-200 text-gray-600"
+                          }`}>
+                            {isSelected ? "✓ SELECTED" : "+ ADD"}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-xs leading-tight mb-1">{item.label}</div>
+                          <div className={`text-[10px] line-clamp-2 leading-relaxed ${isSelected ? "text-orange-100 font-medium" : "text-gray-500"}`}>
+                            {item.tagline}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-2 border-t border-gray-150 flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Custom Classification / Additional Tag</label>
                     <input
                       type="text"
-                      placeholder="Enter custom project classification..."
-                      onChange={e => updateQuoteField({ projectType: e.target.value })}
+                      placeholder="e.g. Fintech SaaS Platform..."
+                      value={activeQuote.customCategoryName || ""}
+                      onChange={e => updateQuoteField({ customCategoryName: e.target.value })}
                       className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-[#1a0f00] bg-gray-50 focus:outline-none focus:border-orange-500"
                     />
                   </div>
@@ -496,7 +778,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 2. USER ACCESS & ROLES TAB (FULL CRUD ON ROLES) */}
-          {activeProjectTab === "user-roles" && (
+          {(activeProjectTab === "all" || activeProjectTab === "user-roles") && (
             <div className="flex flex-col gap-5">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">2. Target User Access & Roles Architecture</h4>
@@ -574,7 +856,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 3. FEATURES TAB (FULL CRUD ON FEATURES) */}
-          {activeProjectTab === "features" && (
+          {(activeProjectTab === "all" || activeProjectTab === "features") && (
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">3. Technical Features & Scope</h4>
@@ -682,7 +964,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 4. INVESTMENT PLANS TAB (FULL CRUD ON PLANS) */}
-          {activeProjectTab === "investment-plans" && (
+          {(activeProjectTab === "all" || activeProjectTab === "investment-plans") && (
             <div className="flex flex-col gap-5">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">4. Commercial Investment Plans</h4>
@@ -719,7 +1001,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 5. PLAN COMPARISON TAB (FULL CRUD ON MATRIX ROWS) */}
-          {(activeProjectTab === "plan-comparison" || activeProjectTab === "quotations") && (
+          {(activeProjectTab === "all" || activeProjectTab === "plan-comparison" || activeProjectTab === "quotations") && (
             <div className="flex flex-col gap-5">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">5. Feature Deliverables Comparison Matrix</h4>
@@ -815,7 +1097,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 6. PAYMENT TERMS TAB (FULL CRUD ON PAYMENT TERMS) */}
-          {activeProjectTab === "payment-terms" && (
+          {(activeProjectTab === "all" || activeProjectTab === "payment-terms") && (
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-gray-200 pb-2">
                 <h4 className="font-heading font-extrabold text-[#1a0f00] text-sm">6. Payment Terms & Milestone Schedule</h4>
@@ -841,7 +1123,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 7. TERMS & CONDITIONS TAB (FULL CRUD ON T&C) */}
-          {activeProjectTab === "terms-conditions" && (
+          {(activeProjectTab === "all" || activeProjectTab === "terms-conditions") && (
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-4">
                 <div className="flex justify-between items-center border-b border-gray-200 pb-2">
@@ -869,7 +1151,7 @@ export default function ProjectDetailModal({
           )}
 
           {/* 8. COMPANY & BRANDING DETAILS TAB (FULL CRUD ON BRANDING) */}
-          {activeProjectTab === "company-details" && (
+          {(activeProjectTab === "all" || activeProjectTab === "company-details") && (
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center pb-2">
                 <div>
@@ -990,10 +1272,10 @@ export default function ProjectDetailModal({
                           <span className="text-[10px] font-mono text-green-700 font-bold bg-green-50 px-1.5 py-0.5 rounded border border-green-200">Logo Uploaded</span>
                           <button
                             type="button"
-                            onClick={() => saveQuoteSection({ companyLogoUrl: "" })}
-                            className="text-xs text-red-500 hover:text-red-700 font-bold px-1"
+                            onClick={() => saveQuoteSection({ companyLogoUrl: "", companyWatermarkUrl: "" })}
+                            className="text-xs text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded bg-red-50 border border-red-200"
                           >
-                            &times; Remove
+                            &times; Remove Logo & Watermark Image
                           </button>
                         </div>
                       )}
@@ -1162,6 +1444,35 @@ export default function ProjectDetailModal({
           )}
         </div>
       </main>
+
+      <HMSInvoiceModal
+        isOpen={isHMSInvoiceOpen}
+        onClose={() => setIsHMSInvoiceOpen(false)}
+        activeProject={activeProjectDetail}
+        activeQuotation={activeQuote}
+        onSaveInvoice={async (invoiceData) => {
+          try {
+            const res = await fetch(`${API_URL}/crm/invoice`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(invoiceData)
+            });
+            if (res.ok) {
+              await loadDatabase();
+            }
+          } catch (err) {
+            console.error("Error creating HMS invoice:", err);
+          }
+        }}
+        triggerDirectPdfDownload={triggerDirectPdfDownload}
+      />
+
+      <CreateProjectProposalModal
+        isOpen={isCreateProposalModalOpen}
+        onClose={() => setIsCreateProposalModalOpen(false)}
+        project={activeProjectDetail}
+        onCreateProposal={handleCreateNewProjectProposal}
+      />
     </div>
   );
 }

@@ -49,19 +49,174 @@ const seedBuildYourThoughtsRecords = async () => {
       },
       { upsert: true }
     );
+
     console.log("[Seed] 'Build Your Thoughts' records successfully synced in MongoDB Atlas.");
   } catch (err) {
-    console.error("[Seed Build Your Thoughts Error]", err);
+    console.error("[Seed BuildYourThoughts Error]", err);
+  }
+};
+
+const seedHMSRecords = async () => {
+  try {
+    const OurProjectModel = getModel("our-projects");
+    const QuotationModel = getModel("quotation");
+    const InvoiceModel = getModel("invoice");
+
+    await OurProjectModel.updateOne(
+      { id: "OPRJ-6561" },
+      {
+        $set: {
+          id: "OPRJ-6561",
+          name: "hms",
+          title: "Hospital Management System (HMS)",
+          category: "Web & Mobile Ecosystem",
+          clientName: "Internal / Showcase",
+          budget: 185000,
+          status: "APPROVED",
+          description: "Comprehensive Hospital Management System (HMS) with Patient Portal, EMR, Doctor Workstation, Laboratory Diagnostics, Pharmacy Inventory, and iOS/Android Mobile Apps."
+        }
+      },
+      { upsert: true }
+    );
+
+    await QuotationModel.updateOne(
+      { id: "QT-OPRJ-6561" },
+      {
+        $set: {
+          id: "QT-OPRJ-6561",
+          number: "QT-OPRJ-1950",
+          projectId: "OPRJ-6561",
+          projectName: "hms",
+          title: "hms Web Portal + iOS & Android Mobile Apps Ecosystem",
+          clientName: "Internal / Showcase",
+          projectType: "Web & Mobile Ecosystem",
+          projectTypes: ["Web Application", "Mobile Application (iOS & Android)"],
+          planAPrice: 135000,
+          planBPrice: 195000,
+          planCPrice: 320000,
+          currency: "Indian Rupees (INR)",
+          overviewNarrative: "This proposal covers the complete omni-channel HMS Ecosystem comprising a high-performance Web Management Portal alongside cross-platform Mobile Applications for both iOS and Android.",
+          paymentTerms: "30% Advance on project kickoff\n30% on completion of Web EMR & OPD Billing\n30% on Mobile Apps delivery\n10% on Go-Live UAT & Store Publishing",
+          termsAndConditions: "Estimation valid for 30 days. Includes 120 days complimentary bug-fix & cloud SLA support.",
+          status: "Approved",
+          serviceItems: [
+            { description: "HMS Core Web Portal & Admin Control Workstation", qty: 1, rate: 55000 },
+            { description: "Patient iOS & Android Cross-Platform Mobile Application", qty: 1, rate: 45000 },
+            { description: "Doctor Ward Rounds Mobile Workstation & EMR Module", qty: 1, rate: 35000 },
+            { description: "AWS High-Availability Cloud Server & SSL Setup", qty: 1, rate: 15000 }
+          ]
+        }
+      },
+      { upsert: true }
+    );
+
+    await InvoiceModel.updateOne(
+      { id: "INV-HMS-6561" },
+      {
+        $set: {
+          id: "INV-HMS-6561",
+          number: "INV-HMS-6561",
+          title: "hms Official Tax Invoice",
+          projectId: "OPRJ-6561",
+          projectName: "hms",
+          clientName: "Internal / Showcase",
+          issueDate: new Date().toISOString().split("T")[0],
+          dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          status: "Sent",
+          currency: "INR",
+          subtotal: 150000,
+          taxRate: 18,
+          taxAmount: 26100,
+          discount: 5000,
+          totalAmount: 171100,
+          lineItems: [
+            { description: "HMS Web Portal & Admin Workstation", qty: 1, rate: 55000 },
+            { description: "Patient iOS & Android Mobile Apps", qty: 1, rate: 45000 },
+            { description: "Doctor Mobile Workstation & EMR Module", qty: 1, rate: 35000 },
+            { description: "AWS Cloud Server & SSL Encryption Setup", qty: 1, rate: 15000 }
+          ],
+          notes: "Thank you for choosing Speshway Solutions for your HMS digital healthcare platform.",
+          paymentTerms: "Net 15 Days"
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log("[Seed] 'HMS' project, 3-tier proposal quotations & global invoice successfully synced in MongoDB Atlas.");
+  } catch (err) {
+    console.error("[Seed HMS Error]", err);
+  }
+};
+
+const seedHRMSRecords = async () => {
+  try {
+    const OurProjectModel = getModel("our-projects");
+    const QuotationModel = getModel("quotation");
+
+    await OurProjectModel.updateOne(
+      { id: "OPRJ-4838" },
+      {
+        $set: {
+          id: "OPRJ-4838",
+          name: "hrms",
+          title: "Human Resource Management System (HRMS)",
+          category: "Web & Mobile Ecosystem",
+          clientName: "Internal / Showcase",
+          budget: 140000,
+          status: "APPROVED",
+          description: "Human Resource Management System (HRMS) with Employee Self-Service, Attendance, Biometric Sync, Automated Payroll, Indian Tax Slabs (PF/ESI/TDS), and iOS/Android Apps."
+        }
+      },
+      { upsert: true }
+    );
+
+    await QuotationModel.updateOne(
+      { id: "QT-OPRJ-4838" },
+      {
+        $set: {
+          id: "QT-OPRJ-4838",
+          number: "QT-OPRJ-4838",
+          projectId: "OPRJ-4838",
+          projectName: "hrms",
+          title: "hrms Web Portal + iOS & Android Mobile Apps Ecosystem",
+          clientName: "Internal / Showcase",
+          projectType: "Web & Mobile Ecosystem",
+          projectTypes: ["Web Application", "Mobile Application (iOS & Android)"],
+          planAPrice: 110000,
+          planBPrice: 160000,
+          planCPrice: 280000,
+          currency: "Indian Rupees (INR)",
+          overviewNarrative: "This proposal covers the complete omni-channel HRMS Ecosystem comprising a high-performance Web Management Portal alongside cross-platform Mobile Applications for both iOS and Android.",
+          paymentTerms: "25% Advance on project kickoff\n25% on completion of HR Web Portal\n25% on Mobile Apps delivery\n15% on App Store Publishing\n10% on Go-Live UAT",
+          termsAndConditions: "Estimation valid for 30 days. Includes 120 days complimentary bug-fix & cloud SLA support.",
+          status: "Approved",
+          serviceItems: [
+            { description: "HRMS Web Portal & Admin Control Workstation", qty: 1, rate: 55000 },
+            { description: "Employee iOS & Android Cross-Platform Mobile Application", qty: 1, rate: 45000 },
+            { description: "Biometric Attendance Hardware Sync & GPS Clock-In Engine", qty: 1, rate: 25000 },
+            { description: "Automated Monthly Payroll & Statutory Tax Exporter", qty: 1, rate: 15000 }
+          ]
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log("[Seed] 'HRMS' project & quotation proposal successfully synced in MongoDB Atlas.");
+  } catch (err) {
+    console.error("[Seed HRMS Error]", err);
   }
 };
 
 exports.seedBuildYourThoughtsRecords = seedBuildYourThoughtsRecords;
+exports.seedHMSRecords = seedHMSRecords;
 
 // 1. Get all records from dedicated collection
 exports.getRecords = async (req, res, next) => {
   try {
     const { type } = req.params;
     await seedBuildYourThoughtsRecords();
+    await seedHMSRecords();
+    await seedHRMSRecords();
 
     // Special handler for "user" type -> Query users collection
     if (type === "user") {
@@ -189,12 +344,6 @@ exports.updateRecord = async (req, res, next) => {
       { number: cleanId },
       { customId: cleanId }
     ];
-    if (payload.projectId) {
-      queryConditions.push({ projectId: payload.projectId });
-    }
-    if (payload.projectName) {
-      queryConditions.push({ projectName: payload.projectName });
-    }
     if (isHex) {
       queryConditions.push({ _id: cleanId });
     }

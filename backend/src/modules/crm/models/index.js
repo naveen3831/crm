@@ -5,6 +5,7 @@ const Lead = require("./lead.model");
 const Project = require("./project.model");
 const OurProject = require("./ourproject.model");
 const Quotation = require("./quotation.model");
+const Invoice = require("./invoice.model");
 
 const modelRegistry = {
   client: Client,
@@ -19,6 +20,8 @@ const modelRegistry = {
   "our-projects": OurProject,
   quotation: Quotation,
   quotations: Quotation,
+  invoice: Invoice,
+  invoices: Invoice,
 };
 
 const collectionNames = {
